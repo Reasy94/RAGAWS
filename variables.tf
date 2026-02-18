@@ -10,13 +10,8 @@ variable "bucket_models_name" {
   default     = "rag-storage-project-054375299743"
 }
 
-variable "opensearch_admin_username" {
-  description = "Administrative username for OpenSearch cluster authentication"
+variable "rds_rag_username" {
+  description = "RAG username for RDS"
   type        = string
-  default     = "RAGUser"
-}
-
-variable "opensearch_admin_password" {
-  description = "Administrative password for the OpenSearch RAGUser"
-  sensitive   = true
+  default     = "ragadmin"
 }

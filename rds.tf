@@ -13,7 +13,7 @@ resource "aws_secretsmanager_secret" "db_credentials" {
 resource "aws_secretsmanager_secret_version" "db_credentials_val" {
   secret_id     = aws_secretsmanager_secret.db_credentials.id
   secret_string = jsonencode({
-    username = "ragadmin"
+    username = var.rds_rag_username
     password = random_password.db_password.result
     engine   = "postgres"
     host     = aws_db_instance.rag_db.address
@@ -29,17 +29,33 @@ resource "aws_db_instance" "rag_db" {
   engine_version         = "16.1"
   instance_class         = "db.t3.micro"
   
-  username               = "ragadmin"
+  username               = var.rds_rag_username
   password               = random_password.db_password.result
 
   parameter_group_name   = "default.postgres16"
   skip_final_snapshot    = true
   publicly_accessible    = false
   db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name  
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]	
+}
 
-  tags = {
-    Environment = "Dev"
-    Project     = "RAG-AWS"
+resource "aws_security_group" "rds_sg" {
+  name        = "rds_sg"
+  description = "Postgres Traffic"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.default.cidr_block] 
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }
+

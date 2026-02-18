@@ -1,0 +1,7 @@
+###
+RDS Configured Terraform correctly, need to run the plsql of pgvector(aws codebuild)
+
+
+---Push attuale
+deleted scraper in iam, added networking.tf
+
