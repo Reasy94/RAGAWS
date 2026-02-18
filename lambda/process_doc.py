@@ -9,7 +9,7 @@ import seed_initialize
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# --- CONFIGURAZIONE DA VARIABILI D'AMBIENTE ---
+# --- Env Variables ---
 BUCKET_MODELS = os.environ.get('BUCKET_MODELS')
 MODEL_KEY = os.environ.get('MODEL_KEY', 'models/model.onnx')
 TOKENIZER_KEY = os.environ.get('TOKENIZER_KEY', 'models/tokenizer.json')
@@ -38,7 +38,6 @@ class AIModel:
         try:
             logger.info(f"Download model from S3 bucket: {BUCKET_MODELS}...")
             
-            # Download solo se non già presenti in /tmp
             if not os.path.exists(tmp_tokenizer):
                 s3.download_file(BUCKET_MODELS, TOKENIZER_KEY, tmp_tokenizer)
             if not os.path.exists(tmp_model):
@@ -52,7 +51,7 @@ class AIModel:
             logger.error(f"Errore fatale nel caricamento del modello: {str(e)}")
             raise e
 
-# Inizializziamo l'istanza globale
+# global instance for Cold Start
 ai_model = AIModel()
 
 def lambda_handler(event, context):

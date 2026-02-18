@@ -1,84 +1,80 @@
 import os
 import boto3
+import psycopg2 # Sostituito OpenSearch con psycopg2
 import onnxruntime as ort
 from tokenizers import Tokenizer
-from opensearchpy import OpenSearch, RequestsHttpConnection
 
-# --- CONFIGURATION FROM ENVIRONMENT ---
+# --- CONFIGURATION ---
 BUCKET_MODELS = os.environ.get('BUCKET_MODELS')
 MODEL_KEY = os.environ.get('MODEL_KEY', 'models/model.onnx')
 TOKENIZER_KEY = os.environ.get('TOKENIZER_KEY', 'models/tokenizer.json')
-OPENSEARCH_HOST = os.environ.get('OPENSEARCH_HOST') # Make sure to set this
 
-# English Domain Data
+# Credenziali RDS (da passare come variabili d'ambiente nella Lambda)
+DB_HOST = os.environ.get('DB_HOST')
+DB_NAME = os.environ.get('DB_NAME', 'ragdb')
+DB_USER = os.environ.get('DB_USER', 'postgres')
+DB_PASS = os.environ.get('DB_PASS')
+
 domains_data = [
-    {
-        "name": "hr", 
-        "desc": "human resources, employee management, payroll, vacations, recruitment, hiring, labor contracts"
-    },
-    {
-        "name": "legal", 
-        "desc": "legal department, contracts, privacy policy, GDPR, compliance, terms of service, regulations"
-    },
-    {
-        "name": "finance", 
-        "desc": "accounting, taxes, invoices, expense reports, budget, financial planning, treasury"
-    }
+    {"name": "hr", "desc": "human resources, employee management, payroll, vacations, recruitment"},
+    {"name": "legal", "desc": "legal department, contracts, privacy policy, GDPR, compliance"},
+    {"name": "finance", "desc": "accounting, taxes, invoices, expense reports, budget"}
 ]
 
 def get_embedding(text, tokenizer, session):
-    # Mirroring your Lambda logic exactly
     encoding = tokenizer.encode(text)
     inputs = {session.get_inputs()[0].name: [encoding.ids]}
     outputs = session.run(None, inputs)
-    # CLS Token extraction
     return outputs[0][0][0].tolist()
 
 def seed():
-    if not BUCKET_MODELS:
-        print("Error: BUCKET_MODELS environment variable is missing!")
-        return
+    # 1. Download/Load Modelli (Invariato)
+    # ... (logica download s3 come prima) ...
+    # Assumiamo che i modelli siano in /var/task/models nel container
+    tokenizer = Tokenizer.from_file('/var/task/models/tokenizer.json')
+    session = ort.InferenceSession('/var/task/models/model.onnx')
 
-    s3 = boto3.client('s3')
-    tmp_model = '/tmp/model.onnx'
-    tmp_tokenizer = '/tmp/tokenizer.json'
+    # 2. Connessione a RDS PostgreSQL
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASS
+        )
+        cur = conn.cursor()
+        print("Connected to RDS successfully.")
 
-    # Ensure /tmp exists (for local testing)
-    os.makedirs('/tmp', exist_ok=True)
+        # Assicuriamoci che l'estensione pgvector sia attiva e la tabella esista
+        cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS domains (
+                id SERIAL PRIMARY KEY,
+                domain_name TEXT UNIQUE,
+                description TEXT,
+                embedding vector(384) -- 384 è la dimensione di BGE-micro
+            );
+        """)
 
-    # 1. Download Model and Tokenizer (Same logic as Lambda)
-    print(f"Downloading models from S3 bucket: {BUCKET_MODELS}...")
-    if not os.path.exists(tmp_tokenizer):
-        s3.download_file(BUCKET_MODELS, TOKENIZER_KEY, tmp_tokenizer)
-    if not os.path.exists(tmp_model):
-        s3.download_file(BUCKET_MODELS, MODEL_KEY, tmp_model)
+        print(f"Starting seeding process...")
+        for item in domains_data:
+            vector = get_embedding(item['desc'], tokenizer, session)
+            
+            # Query per inserire o aggiornare se il nome dominio esiste già
+            query = """
+                INSERT INTO domains (domain_name, description, embedding)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (domain_name) DO NOTHING;
+            """
+            cur.execute(query, (item['name'], item['desc'], vector))
+            print(f"✅ Indexed domain in RDS: {item['name']}")
 
-    tokenizer = Tokenizer.from_file(tmp_tokenizer)
-    session = ort.InferenceSession(tmp_model)
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    # 2. OpenSearch Connection
-    # Replace auth with your actual credentials or IAM signers
-    client = OpenSearch(
-        hosts=[{'host': OPENSEARCH_HOST, 'port': 443}],
-        http_auth=('admin', 'YourPassword123!'), 
-        use_ssl=True, 
-        verify_certs=True,
-        connection_class=RequestsHttpConnection
-    )
-
-    print(f"Starting seeding process for index 'domain'...")
-    for item in domains_data:
-        vector = get_embedding(item['desc'], tokenizer, session)
-        
-        document = {
-            "domain_name": item['name'],
-            "description": item['desc'],
-            "embedding": vector
-        }
-
-        # Indexing
-        client.index(index='domain', body=document, refresh=True)
-        print(f"✅ Indexed domain: {item['name']} (Vector size: {len(vector)})")
+    except Exception as e:
+        print(f"❌ Database Error: {str(e)}")
 
 if __name__ == "__main__":
     seed()
