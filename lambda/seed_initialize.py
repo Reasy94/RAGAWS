@@ -1,5 +1,4 @@
 import os
-import boto3
 import psycopg2
 import onnxruntime as ort
 from tokenizers import Tokenizer

@@ -1,0 +1,19 @@
+[project]
+name = "ragaws"
+version = "0.1.0"
+description = "Project RAG on AWS"
+authors = [
+    {name = "Reasy94",email = "desalvialuca@yahoo.it"}
+]
+requires-python = "^3.12"
+dependencies = [
+    "psycopg2-binary (>=2.9.11,<3.0.0)",
+    "onnxruntime (>=1.24.1,<2.0.0)",
+    "tokenizers (>=0.22.2,<0.23.0)",
+    "boto3 (>=1.42.52,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
