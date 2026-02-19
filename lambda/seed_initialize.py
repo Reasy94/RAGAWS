@@ -1,6 +1,6 @@
 import os
 import boto3
-import psycopg2 # Sostituito OpenSearch con psycopg2
+import psycopg2
 import onnxruntime as ort
 from tokenizers import Tokenizer
 
@@ -16,9 +16,9 @@ DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS')
 
 domains_data = [
-    {"name": "hr", "desc": "human resources, employee management, payroll, vacations, recruitment"},
-    {"name": "legal", "desc": "legal department, contracts, privacy policy, GDPR, compliance"},
-    {"name": "finance", "desc": "accounting, taxes, invoices, expense reports, budget"}
+    {"name": "aws_architecture", "desc": "AWS whitepapers, cloud infrastructure, serverless, technical guides."},
+    {"name": "academic_research", "desc": "ArXiv papers, computer science, AI, machine learning, deep learning."},
+    {"name": "global_development", "desc": "World Bank, international economy, poverty, sustainability, policy."}
 ]
 
 def get_embedding(text, tokenizer, session):
@@ -28,13 +28,10 @@ def get_embedding(text, tokenizer, session):
     return outputs[0][0][0].tolist()
 
 def seed():
-    # 1. Download/Load Modelli (Invariato)
-    # ... (logica download s3 come prima) ...
-    # Assumiamo che i modelli siano in /var/task/models nel container
     tokenizer = Tokenizer.from_file('/var/task/models/tokenizer.json')
     session = ort.InferenceSession('/var/task/models/model.onnx')
 
-    # 2. Connessione a RDS PostgreSQL
+    # Connection to RDS
     try:
         conn = psycopg2.connect(
             host=DB_HOST,
@@ -45,22 +42,40 @@ def seed():
         cur = conn.cursor()
         print("Connected to RDS successfully.")
 
-        # Assicuriamoci che l'estensione pgvector sia attiva e la tabella esista
+        # Check if the pgvector extension is available and create the table
+        cur.execute("CREATE SCHEMA IF NOT EXISTS rag;")
+        cur.execute("SET search_path TO rag;")
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS domains (
-                id SERIAL PRIMARY KEY,
+                id_domain SERIAL PRIMARY KEY,
                 domain_name TEXT UNIQUE,
                 description TEXT,
-                embedding vector(384) -- 384 è la dimensione di BGE-micro
+                embedding_domain vector(384)
             );
         """)
-
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS fileIngested (
+            id_file SERIAL PRIMARY KEY,
+            id_domain INTEGER FOREIGN KEY REFERENCES domains(id_domain) ON DELETE CASCADE,
+            file_name TEXT UNIQUE,
+            embedding_model TEXT,
+            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ingested_from TEXT
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chunks (
+            id_chunk SERIAL PRIMARY KEY,
+            id_file INTEGER FOREIGN KEY REFERENCES fileIngested(id_file) ON DELETE CASCADE,
+            content TEXT,
+            embedding vector(384)
+            );
+        """)
         print(f"Starting seeding process...")
         for item in domains_data:
             vector = get_embedding(item['desc'], tokenizer, session)
             
-            # Query per inserire o aggiornare se il nome dominio esiste già
             query = """
                 INSERT INTO domains (domain_name, description, embedding)
                 VALUES (%s, %s, %s)

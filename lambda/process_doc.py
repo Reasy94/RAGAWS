@@ -1,18 +1,27 @@
 import boto3
 import os
 import logging
-import time
+import json
+import psycopg2
 import onnxruntime as ort
 from tokenizers import Tokenizer
 import seed_initialize
 
+# --- Logger Setup ---
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# --- Env Variables ---
-BUCKET_MODELS = os.environ.get('BUCKET_MODELS')
-MODEL_KEY = os.environ.get('MODEL_KEY', 'models/model.onnx')
-TOKENIZER_KEY = os.environ.get('TOKENIZER_KEY', 'models/tokenizer.json')
+# --- Container Paths ---
+MODEL_PATH = '/var/task/models/model.onnx'
+TOKENIZER_PATH = '/var/task/models/tokenizer.json'
+
+# --- Database Config ---
+DB_CONFIG = {
+    "host": os.environ.get('DB_HOST'),
+    "database": os.environ.get('DB_NAME', 'ragdb'),
+    "user": os.environ.get('DB_USER', 'postgres'),
+    "password": os.environ.get('DB_PASS')
+}
 
 class AIModel:
     _instance = None
@@ -24,82 +33,115 @@ class AIModel:
             cls._instance.session = None
         return cls._instance
 
-    def is_loaded(self):
-        return self.tokenizer is not None and self.session is not None
-
     def load(self):
-        if self.is_loaded():
+        if self.tokenizer is not None and self.session is not None:
             return
-
-        s3 = boto3.client('s3')
-        tmp_model = '/tmp/model.onnx'
-        tmp_tokenizer = '/tmp/tokenizer.json'
-
         try:
-            logger.info(f"Download model from S3 bucket: {BUCKET_MODELS}...")
-            
-            if not os.path.exists(tmp_tokenizer):
-                s3.download_file(BUCKET_MODELS, TOKENIZER_KEY, tmp_tokenizer)
-            if not os.path.exists(tmp_model):
-                s3.download_file(BUCKET_MODELS, MODEL_KEY, tmp_model)
-
-            self.tokenizer = Tokenizer.from_file(tmp_tokenizer)
-            self.session = ort.InferenceSession(tmp_model)
-            logger.info("Modello e Tokenizer caricati correttamente in memoria.")
-            
+            logger.info(f"Loading AI Model from: {MODEL_PATH}")
+            self.tokenizer = Tokenizer.from_file(TOKENIZER_PATH)
+            self.session = ort.InferenceSession(MODEL_PATH)
+            logger.info("AI Assets loaded successfully.")
         except Exception as e:
-            logger.error(f"Errore fatale nel caricamento del modello: {str(e)}")
+            logger.error(f"Failed to initialize AI Model: {str(e)}")
             raise e
 
-# global instance for Cold Start
 ai_model = AIModel()
 
 def lambda_handler(event, context):
-    start_time = time.time()
+    # This list will track which messages failed to process
+    batch_item_failures = []
     
+    # 1. Check for Seed Action (Single Trigger)
+    if event.get("action") == "seed":
+        logger.info("Manual action: Seeding database...")
+        return seed_initialize.seed()
+    
+    # Pre-load model (Singleton)
+    ai_model.load()
+
+    # 2. Process Batch
+    for record in event.get('Records', []):
+        message_id = record['messageId']
+        try:
+            # Parse SQS message body (contains S3 event)
+            s3_event = json.loads(record['body'])
+            
+            for s3_record in s3_event.get('Records', []):
+                bucket_name = s3_record['s3']['bucket']['name']
+                file_key = s3_record['s3']['object']['key']
+                
+                logger.info(f"Processing message {message_id} for file: {file_key}")
+
+                # Processing Logic
+                process_single_file(bucket_name, file_key)
+                
+        except Exception as e:
+            logger.error(f"Partial failure for message {message_id}: {str(e)}")
+            # If ANY sub-step fails, we mark this specific SQS message as failed
+            batch_item_failures.append({"itemIdentifier": message_id})
+
+    # 3. Report Success/Failure to SQS
+    # If the list is empty, SQS deletes all messages. 
+    # If not, SQS retries ONLY the failed ones.
+    return {"batchItemFailures": batch_item_failures}
+
+def process_single_file(bucket, key):
+    """Encapsulated logic for text extraction, embedding, and RDS storage"""
+    s3 = boto3.client('s3')
+    
+    # Download content
+    response = s3.get_object(Bucket=bucket, Key=key)
+    text = response['Body'].read().decode('utf-8')
+
+    # Inference
+    encoding = ai_model.tokenizer.encode(text)
+    inputs = {ai_model.session.get_inputs()[0].name: [encoding.ids]}
+    outputs = ai_model.session.run(None, inputs)
+    vector = outputs[0][0][0].tolist()
+
+    # Database Persistence
+    save_to_rds(key, text, vector)
+
+def save_to_rds(file_key, chunks_data, vector_domain_comparison):
+    model_name = "bge-micro-v2"
     try:
-        if event.get("action") == "seed":
-            return seed_initialize.seed()
-        ai_model.load()
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        logger.info("Connected to RDS successfully.")
+        # Find ID domain based on vector similarity (pgvector <=> operator)
+        cur.execute("""
+            SELECT id_domain FROM domains 
+            ORDER BY embedding_domain <=> %s::vector 
+            LIMIT 1;
+        """, (vector_domain_comparison,))
+        id_domain = cur.fetchone()[0]
 
-        # 2. Parsing dell'evento S3 (il file appena caricato)
-        bucket_name = event['Records'][0]['s3']['bucket']['name']
-        file_key = event['Records'][0]['s3']['object']['key']
-        logger.info(f"Elaborazione file: {file_key} dal bucket: {bucket_name}")
-
-        # 3. Lettura del testo dal documento
-        s3 = boto3.client('s3')
-        response = s3.get_object(Bucket=bucket_name, Key=file_key)
-        document_text = response['Body'].read().decode('utf-8')
-
-        # 4. Generazione Embedding
-        # Trasformiamo il testo in ID numerici
-        encoding = ai_model.tokenizer.encode(document_text)
+        # Insert File into fileIngested table and return id_file for chunk association
+        cur.execute("""
+            INSERT INTO fileIngested (id_domain, file_name, embedding_model, ingested_from)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (file_name) DO UPDATE SET ingested_at = CURRENT_TIMESTAMP
+            RETURNING id_file;
+        """, (id_domain, file_key, model_name, "S3_Bucket_Scraper"))
         
-        # Eseguiamo il modello ONNX
-        inputs = {ai_model.session.get_inputs()[0].name: [encoding.ids]}
-        outputs = ai_model.session.run(None, inputs)
+        id_file = cur.fetchone()[0]
+
+
+        cur.execute("DELETE FROM chunks WHERE id_file = %s;", (id_file,))
         
-        # Estraiamo il vettore (embedding)
-        # Per BGE-micro, prendiamo l'ultimo strato (solitamente index 0)
-        embeddings = outputs[0][0][0].tolist() 
+        insert_query = """
+            INSERT INTO chunks (id_file, content, embedding)
+            VALUES (%s, %s, %s);
+        """
+        batch_data = [(id_file, c['content'], c['vector']) for c in chunks_data]
+        cur.executemany(insert_query, batch_data)
 
-        duration = time.time() - start_time
-        logger.info(f"Embedding generato con successo in {duration:.2f}s. Dimensione: {len(embeddings)}")
-
-        # TODO: Prossimo step -> Inviare a OpenSearch
-        return {
-            "statusCode": 200,
-            "body": {
-                "message": "Embedding creato",
-                "key": file_key,
-                "vector_preview": embeddings[:5] # Mostriamo solo i primi 5 valori nei log
-            }
-        }
-
+        conn.commit()
+        logger.info(f"Successfully ingested {file_key} with {len(batch_data)} chunks.")
+        
     except Exception as e:
-        logger.error(f"Errore durante l'elaborazione del file {file_key}: {str(e)}")
-        return {
-            "statusCode": 500,
-            "body": str(e)
-        }
+        if conn: conn.rollback()
+        logger.error(f"Failed to save to RDS: {str(e)}")
+        raise e
+    finally:
+        if conn: cur.close(); conn.close()

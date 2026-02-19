@@ -2,23 +2,49 @@ version: 0.2
 
 phases:
   install:
+    runtime-versions:
+      python: 3.11
     commands:
       - echo "Installing Terraform..."
       - sudo yum install -y yum-utils
       - sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
       - sudo yum -y install terraform
+      - echo "Installing Python dependencies for Seeding..."
+      - pip install psycopg2-binary onnxruntime tokenizers boto3
 
   pre_build:
     commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URL
       - echo "Initializing Terraform..."
       - terraform init
 
   build:
     commands:
-      - echo "Running Terraform Plan and Apply..."
-      - terraform plan -out=tfplan
-      # The -auto-approve flag is essential for non-interactive environments like CodeBuild
-      - terraform apply -auto-approve tfplan
+      - echo "1. Running Terraform Apply..."
+      - terraform apply -auto-approve
+      
+      - DB_HOST=$(terraform output -raw db_instance_address)
+      - DB_PASS=$(terraform output -raw db_password)
+      
+      - echo "2. Running Seed Script..."
+      # Execute python seed script with environment variables
+      - export DB_HOST=$DB_HOST
+      - export DB_PASS=$DB_PASS
+      - export DB_NAME="ragdb"
+      - export DB_USER="postgres"
+      - python seed_initialize.py
+
+      - echo "3. Building Docker Image..."
+      - docker build -t $ECR_REPOSITORY_URL:latest .
+      - docker tag $ECR_REPOSITORY_URL:latest $ECR_REPOSITORY_URL:$CODEBUILD_RESOLVED_SOURCE_VERSION
+
+  post_build:
+    commands:
+      - echo "4. Pushing Docker Image..."
+      - docker push $ECR_REPOSITORY_URL:latest
+      - docker push $ECR_REPOSITORY_URL:$CODEBUILD_RESOLVED_SOURCE_VERSION
+      - echo "Deploy completed on $(date)"
 
 artifacts:
   files:
