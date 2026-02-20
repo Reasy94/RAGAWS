@@ -55,3 +55,19 @@ resource "aws_iam_role_policy_attachment" "processor_vpc" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 }
+
+resource "aws_iam_policy" "lambda_secrets_policy" {
+  name        = "LambdaSecretsRead"
+  description = "Lambda can read RDS credentials"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = "secretsmanager:GetSecretValue"
+        Effect   = "Allow"
+        Resource = aws_secretsmanager_secret.db_credentials.arn
+      }
+    ]
+  })
+}

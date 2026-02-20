@@ -1,4 +1,5 @@
 import boto3
+from botocore.exceptions import ClientError
 import os
 import logging
 import json
@@ -6,6 +7,8 @@ import psycopg2
 import onnxruntime as ort
 from tokenizers import Tokenizer
 import seed_initialize
+import io
+from pypdf import PdfReader
 
 # --- Logger Setup ---
 logger = logging.getLogger()
@@ -15,13 +18,9 @@ logger.setLevel(logging.INFO)
 MODEL_PATH = '/var/task/models/model.onnx'
 TOKENIZER_PATH = '/var/task/models/tokenizer.json'
 
-# --- Database Config ---
-DB_CONFIG = {
-    "host": os.environ.get('DB_HOST'),
-    "database": os.environ.get('DB_NAME', 'ragdb'),
-    "user": os.environ.get('DB_USER', 'postgres'),
-    "password": os.environ.get('DB_PASS')
-}
+# --- Global Constants ---
+DEFAULT_REGION = "eu-central-1"
+SECRET_ARN = os.environ.get('SECRET_ARN')
 
 class AIModel:
     _instance = None
@@ -47,37 +46,66 @@ class AIModel:
 
 ai_model = AIModel()
 
+import os
+import boto3
+import json
+from botocore.exceptions import ClientError
+
+# --- COSTANTI GLOBALI ---
+# Queste sono info strutturali, non segreti.
+DEFAULT_REGION = "eu-central-1"
+SECRET_ARN = os.environ.get('SECRET_ARN')
+
+def get_db_config():
+    region = os.environ.get('AWS_REGION', DEFAULT_REGION)
+    if not SECRET_ARN:
+        raise ValueError("SECRET_ARN variable is not set in the environment variables.")
+
+    session = boto3.session.Session()
+    client = session.client(service_name='secretsmanager', region_name=region)
+
+    try:
+        response = client.get_secret_value(SecretId=SECRET_ARN)
+        secret = json.loads(response['SecretString'])
+        
+        return {
+            "host": secret['host'],
+            "database": secret['db_name'],
+            "user": secret['username'],
+            "password": secret['password'],
+            "port": secret['port']
+        }
+    except ClientError as e:
+        print(f"[ERROR] Cannot retrieve the secret {SECRET_ARN}: {e}")
+        raise e
+
+# Esecuzione
+DB_CONFIG = get_db_config()
+
 def lambda_handler(event, context):
-    # This list will track which messages failed to process
+
     batch_item_failures = []
     
-    # 1. Check for Seed Action (Single Trigger)
     if event.get("action") == "seed":
         logger.info("Manual action: Seeding database...")
         return seed_initialize.seed()
     
-    # Pre-load model (Singleton)
     ai_model.load()
 
-    # 2. Process Batch
     for record in event.get('Records', []):
         message_id = record['messageId']
         try:
-            # Parse SQS message body (contains S3 event)
             s3_event = json.loads(record['body'])
-            
             for s3_record in s3_event.get('Records', []):
                 bucket_name = s3_record['s3']['bucket']['name']
                 file_key = s3_record['s3']['object']['key']
                 
                 logger.info(f"Processing message {message_id} for file: {file_key}")
 
-                # Processing Logic
                 process_single_file(bucket_name, file_key)
                 
         except Exception as e:
             logger.error(f"Partial failure for message {message_id}: {str(e)}")
-            # If ANY sub-step fails, we mark this specific SQS message as failed
             batch_item_failures.append({"itemIdentifier": message_id})
 
     # 3. Report Success/Failure to SQS
@@ -86,20 +114,23 @@ def lambda_handler(event, context):
     return {"batchItemFailures": batch_item_failures}
 
 def process_single_file(bucket, key):
-    """Encapsulated logic for text extraction, embedding, and RDS storage"""
     s3 = boto3.client('s3')
     
-    # Download content
     response = s3.get_object(Bucket=bucket, Key=key)
-    text = response['Body'].read().decode('utf-8')
-
-    # Inference
+    file_content = response['Body'].read()
+    if key.endswith('.pdf'):
+        pdf_file = io.BytesIO(file_content)
+        reader = PdfReader(pdf_file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+    else:
+        text = file_content.decode('utf-8')
     encoding = ai_model.tokenizer.encode(text)
     inputs = {ai_model.session.get_inputs()[0].name: [encoding.ids]}
     outputs = ai_model.session.run(None, inputs)
     vector = outputs[0][0][0].tolist()
 
-    # Database Persistence
     save_to_rds(key, text, vector)
 
 def save_to_rds(file_key, chunks_data, vector_domain_comparison):
