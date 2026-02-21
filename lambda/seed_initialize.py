@@ -69,7 +69,7 @@ def seed():
             page_number INTEGER,
             chunk_id INTEGER,
             content TEXT,
-            embedding vector(384),
+            embedding vector(1024),
             PRIMARY KEY (file_hash, page_number, chunk_id)
             );
         """)
