@@ -1,14 +1,13 @@
 import boto3
-from botocore.exceptions import ClientError
 import os
 import logging
 import json
 import psycopg2
 import onnxruntime as ort
 from tokenizers import Tokenizer
-import seed_initialize
 import io
-from pypdf import PdfReader
+import hashlib
+import pdfplumber  # Assicurati che sia incluso nel layer della Lambda
 
 # --- Logger Setup ---
 logger = logging.getLogger()
@@ -19,8 +18,8 @@ MODEL_PATH = '/var/task/models/model.onnx'
 TOKENIZER_PATH = '/var/task/models/tokenizer.json'
 
 # --- Global Constants ---
-DEFAULT_REGION = "eu-central-1"
-SECRET_ARN = os.environ.get('SECRET_ARN')
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 50  # Piccola sovrapposizione per non perdere contesto tra chunk
 
 class AIModel:
     _instance = None
@@ -35,144 +34,134 @@ class AIModel:
     def load(self):
         if self.tokenizer is not None and self.session is not None:
             return
-        try:
-            logger.info(f"Loading AI Model from: {MODEL_PATH}")
-            self.tokenizer = Tokenizer.from_file(TOKENIZER_PATH)
-            self.session = ort.InferenceSession(MODEL_PATH)
-            logger.info("AI Assets loaded successfully.")
-        except Exception as e:
-            logger.error(f"Failed to initialize AI Model: {str(e)}")
-            raise e
+        self.tokenizer = Tokenizer.from_file(TOKENIZER_PATH)
+        self.session = ort.InferenceSession(MODEL_PATH)
+
+    def get_embedding(self, text):
+        encoding = self.tokenizer.encode(text)
+        ids = encoding.ids[:512] 
+        inputs = {self.session.get_inputs()[0].name: [ids]}
+        outputs = self.session.run(None, inputs)
+        return outputs[0][0][0].tolist()
 
 ai_model = AIModel()
 
-import os
-import boto3
-import json
-from botocore.exceptions import ClientError
-
-# --- COSTANTI GLOBALI ---
-# Queste sono info strutturali, non segreti.
-DEFAULT_REGION = "eu-central-1"
-SECRET_ARN = os.environ.get('SECRET_ARN')
+def calculate_file_hash(data):
+    """Genera l'impronta digitale univoca del file"""
+    return hashlib.sha256(data).hexdigest()
 
 def get_db_config():
-    region = os.environ.get('AWS_REGION', DEFAULT_REGION)
-    if not SECRET_ARN:
-        raise ValueError("SECRET_ARN variable is not set in the environment variables.")
+    secret_arn = os.environ.get('SECRET_ARN')
+    client = boto3.client('secretsmanager')
+    response = client.get_secret_value(SecretId=secret_arn)
+    secret = json.loads(response['SecretString'])
+    return {
+        "host": secret['host'],
+        "database": secret['db_name'],
+        "user": secret['username'],
+        "password": secret['password'],
+        "port": secret.get('port', 5432)
+    }
 
-    session = boto3.session.Session()
-    client = session.client(service_name='secretsmanager', region_name=region)
-
-    try:
-        response = client.get_secret_value(SecretId=SECRET_ARN)
-        secret = json.loads(response['SecretString'])
-        
-        return {
-            "host": secret['host'],
-            "database": secret['db_name'],
-            "user": secret['username'],
-            "password": secret['password'],
-            "port": secret['port']
-        }
-    except ClientError as e:
-        print(f"[ERROR] Cannot retrieve the secret {SECRET_ARN}: {e}")
-        raise e
-
-# Esecuzione
 DB_CONFIG = get_db_config()
 
 def lambda_handler(event, context):
-
-    batch_item_failures = []
-    
-    if event.get("action") == "seed":
-        logger.info("Manual action: Seeding database...")
-        return seed_initialize.seed()
-    
     ai_model.load()
+    batch_item_failures = []
 
     for record in event.get('Records', []):
-        message_id = record['messageId']
         try:
             s3_event = json.loads(record['body'])
             for s3_record in s3_event.get('Records', []):
-                bucket_name = s3_record['s3']['bucket']['name']
-                file_key = s3_record['s3']['object']['key']
-                
-                logger.info(f"Processing message {message_id} for file: {file_key}")
-
-                process_single_file(bucket_name, file_key)
-                
+                bucket = s3_record['s3']['bucket']['name']
+                key = s3_record['s3']['object']['key']
+                process_single_file(bucket, key)
         except Exception as e:
-            logger.error(f"Partial failure for message {message_id}: {str(e)}")
-            batch_item_failures.append({"itemIdentifier": message_id})
+            logger.error(f"Errore messaggio {record['messageId']}: {e}")
+            batch_item_failures.append({"itemIdentifier": record['messageId']})
 
-    # 3. Report Success/Failure to SQS
-    # If the list is empty, SQS deletes all messages. 
-    # If not, SQS retries ONLY the failed ones.
     return {"batchItemFailures": batch_item_failures}
 
 def process_single_file(bucket, key):
     s3 = boto3.client('s3')
-    
     response = s3.get_object(Bucket=bucket, Key=key)
     file_content = response['Body'].read()
-    if key.endswith('.pdf'):
-        pdf_file = io.BytesIO(file_content)
-        reader = PdfReader(pdf_file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
+    
+    # 1. Calcolo Hash (Identità del file)
+    file_hash = calculate_file_hash(file_content)
+    all_chunks_data = []
+
+    # 2. Estrazione Testo per Pagina
+    if key.lower().endswith('.pdf'):
+        with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            for page in pdf.pages:
+                page_num = page.page_number
+                text = page.extract_text() or ""
+                
+                # --- [PROSSIMO STEP]: Qui chiamerai Gemini Flash se trovi grafici ---
+                # if page.images: visual_desc = call_gemini(page.to_image())
+                
+                # 3. Chunking della pagina
+                # Usiamo uno split semplice (o RecursiveCharacterTextSplitter se lo importi)
+                page_chunks = [text[i:i + CHUNK_SIZE] for i in range(0, len(text), CHUNK_SIZE - CHUNK_OVERLAP)]
+                
+                for idx, content in enumerate(page_chunks):
+                    if len(content.strip()) < 15: continue
+                    
+                    all_chunks_data.append({
+                        'file_hash': file_hash,
+                        'page_num': page_num,
+                        'chunk_id': idx + 1,  # Ricomincia da 1 per ogni pagina
+                        'content': content,
+                        'vector': ai_model.get_embedding(content)
+                    })
     else:
+        # Gestione altri file (TXT/etc) come "Pagina 1"
         text = file_content.decode('utf-8')
-    encoding = ai_model.tokenizer.encode(text)
-    inputs = {ai_model.session.get_inputs()[0].name: [encoding.ids]}
-    outputs = ai_model.session.run(None, inputs)
-    vector = outputs[0][0][0].tolist()
+        page_chunks = [text[i:i + CHUNK_SIZE] for i in range(0, len(text), CHUNK_SIZE - CHUNK_OVERLAP)]
+        for idx, content in enumerate(page_chunks):
+            all_chunks_data.append({
+                'file_hash': file_hash, 'page_num': 1, 'chunk_id': idx + 1,
+                'content': content, 'vector': ai_model.get_embedding(content)
+            })
 
-    save_to_rds(key, text, vector)
+    if all_chunks_data:
+        save_to_rds(key, file_hash, all_chunks_data)
 
-def save_to_rds(file_key, chunks_data, vector_domain_comparison):
-    model_name = "bge-micro-v2"
+def save_to_rds(file_name, file_hash, chunks):
+    conn = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
-        logger.info("Connected to RDS successfully.")
-        # Find ID domain based on vector similarity (pgvector <=> operator)
+
+        # Inserimento File (Genitore)
+        # Se l'hash esiste già, aggiorniamo solo il timestamp
         cur.execute("""
-            SELECT id_domain FROM domains 
-            ORDER BY embedding_domain <=> %s::vector 
-            LIMIT 1;
-        """, (vector_domain_comparison,))
-        id_domain = cur.fetchone()[0]
+            INSERT INTO fileIngested (file_hash, file_name, id_domain, embedding_model, ingested_from)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (file_hash) DO UPDATE SET ingested_at = CURRENT_TIMESTAMP
+        """, (file_hash, file_name, 1, "bge-micro-v2", "S3_Lambda_Processor"))
 
-        # Insert File into fileIngested table and return id_file for chunk association
-        cur.execute("""
-            INSERT INTO fileIngested (id_domain, file_name, embedding_model, ingested_from)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (file_name) DO UPDATE SET ingested_at = CURRENT_TIMESTAMP
-            RETURNING id_file;
-        """, (id_domain, file_key, model_name, "S3_Bucket_Scraper"))
-        
-        id_file = cur.fetchone()[0]
-
-
-        cur.execute("DELETE FROM chunks WHERE id_file = %s;", (id_file,))
-        
+        # Inserimento Chunk (Figli) con Chiave Composta
+        # Usiamo ON CONFLICT per evitare duplicati se la Lambda riesegue
         insert_query = """
-            INSERT INTO chunks (id_file, content, embedding)
-            VALUES (%s, %s, %s);
+            INSERT INTO chunks (file_hash, page_number, chunk_id, content, embedding)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (file_hash, page_number, chunk_id) DO UPDATE SET content = EXCLUDED.content;
         """
-        batch_data = [(id_file, c['content'], c['vector']) for c in chunks_data]
-        cur.executemany(insert_query, batch_data)
-
-        conn.commit()
-        logger.info(f"Successfully ingested {file_key} with {len(batch_data)} chunks.")
         
+        batch_values = [
+            (c['file_hash'], c['page_num'], c['chunk_id'], c['content'], c['vector']) 
+            for c in chunks
+        ]
+        
+        cur.executemany(insert_query, batch_values)
+        conn.commit()
+        logger.info(f"Successo: {file_name} -> {len(chunks)} chunks salvati.")
+
     except Exception as e:
         if conn: conn.rollback()
-        logger.error(f"Failed to save to RDS: {str(e)}")
+        logger.error(f"Errore DB: {e}")
         raise e
     finally:
-        if conn: cur.close(); conn.close()
+        if conn: conn.close()

@@ -65,10 +65,12 @@ def seed():
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chunks (
-            id_chunk SERIAL PRIMARY KEY,
-            id_file INTEGER FOREIGN KEY REFERENCES fileIngested(id_file) ON DELETE CASCADE,
+            file_hash TEXT REFERENCES fileIngested(file_hash) ON DELETE CASCADE,
+            page_number INTEGER,
+            chunk_id INTEGER,
             content TEXT,
-            embedding vector(384)
+            embedding vector(384),
+            PRIMARY KEY (file_hash, page_number, chunk_id)
             );
         """)
         print(f"Starting seeding process...")
