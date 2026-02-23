@@ -17,13 +17,7 @@ DRAWING_THRESHOLD = 50   # path vettoriali — sopra questa soglia è un grafico
 # ─── CHUNKING ──────────────────────────────────────────────────────────────────
 
 def chunk_pdf(pdf_path: str) -> list[dict]:
-    """
-    Processa un PDF e restituisce tutti i chunk con metadati.
-    - Testo          → RecursiveCharacterTextSplitter
-    - Tabelle        → chunk atomico (Textract in produzione)
-    - Immagini       → chunk atomico (Claude Vision in produzione)
-    - Grafici vett.  → chunk atomico (Claude Vision in produzione)
-    """
+
     all_chunks = []
 
     splitter = RecursiveCharacterTextSplitter(
