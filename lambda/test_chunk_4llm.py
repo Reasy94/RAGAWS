@@ -10,66 +10,77 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 CHUNK_SIZE        = 500
 CHUNK_OVERLAP     = 50
-IMAGE_MIN_SIZE    = 200  # pixel — below this threshold it's decorative
-DRAWING_THRESHOLD = 50   # vector paths — above this threshold it's a chart
-MIN_TABLE_ROWS    = 2    # below this threshold it's likely a false positive
+IMAGE_MIN_SIZE    = 200
+DRAWING_THRESHOLD = 150
+MIN_TABLE_ROWS    = 2
+DPI               = 120
+JPEG_QUALITY      = 85
+
+IMAGES_OUTPUT_DIR = r"C:\Users\desal\Desktop\ProgettoRAGAWS\PDF\IMF Economy\Images_extracted"
 
 
 # ─── PAGE INSPECTOR ────────────────────────────────────────────────────────────
 
 def _has_table_heuristic(fitz_page) -> bool:
-    """
-    Lightweight heuristic to detect tables without opening pdfplumber.
-    Checks for horizontal and vertical lines typical of table borders.
-    Limitation: invisible tables (whitespace-aligned) won't be detected here —
-    pdfplumber will still catch them via text coordinate analysis.
-    """
     drawings = fitz_page.get_drawings()
     h_lines  = [d for d in drawings if d["type"] == "l" and d["rect"].height < 2]
     v_lines  = [d for d in drawings if d["type"] == "l" and d["rect"].width  < 2]
     return len(h_lines) > 3 and len(v_lines) > 3
 
 
-def _inspect_page(fitz_page, fitz_doc) -> dict:
-    """
-    Uses fitz as a lightweight inspector to understand page content
-    before deciding which library to invoke.
-    Called ONCE per page — results reused across all processing steps.
-    """
-    has_text = bool(fitz_page.get_text().strip())
-
-    # Cache get_images() to avoid calling it twice
+def _inspect_page(fitz_page, fitz_doc, page_num: int) -> dict:
+    has_text  = bool(fitz_page.get_text().strip())
     images    = fitz_page.get_images(full=True)
     has_image = any(
         fitz_doc.extract_image(img[0]).get("width", 0) > IMAGE_MIN_SIZE
         for img in images
     ) if images else False
 
-    # Vector graphic — many drawings regardless of embedded images
-    # Pages can have both a logo/watermark AND vector charts
-    has_vector = len(fitz_page.get_drawings()) > DRAWING_THRESHOLD
-
+    drawings   = fitz_page.get_drawings()
+    has_vector = len(drawings) > DRAWING_THRESHOLD
     has_table  = _has_table_heuristic(fitz_page)
+
+    # ── DEBUG — stampa il conteggio drawing per ogni pagina ───────────────────
+    print(f"  [DEBUG] Page {page_num:3d} → drawings: {len(drawings):4d} | "
+          f"text={has_text} image={has_image} "
+          f"vector={has_vector} table={has_table}")
 
     return {
         "has_text":   has_text,
         "has_image":  has_image,
         "has_vector": has_vector,
         "has_table":  has_table,
-        "images":     images,  # cached — reused to avoid double call
+        "images":     images,
     }
+
+
+# ─── IMAGE SAVING ──────────────────────────────────────────────────────────────
+
+def _save_vector_graphic(fitz_page, pdf_stem: str, page_num: int) -> str:
+    pix      = fitz_page.get_pixmap(dpi=DPI)
+    filename = f"{pdf_stem}_page{page_num:03d}_VECTOR_GRAPHIC.jpg"
+    out_path = Path(IMAGES_OUTPUT_DIR) / filename
+    pix.save(str(out_path), jpg_quality=JPEG_QUALITY)
+    size_kb  = out_path.stat().st_size / 1024
+    return f"{filename} ({size_kb:.1f} KB)"
+
+
+def _save_image(image_bytes: bytes, ext: str, pdf_stem: str, page_num: int, img_idx: int) -> str:
+    filename = f"{pdf_stem}_page{page_num:03d}_IMAGE_{img_idx:02d}.{ext}"
+    out_path = Path(IMAGES_OUTPUT_DIR) / filename
+    with open(out_path, "wb") as f:
+        f.write(image_bytes)
+    size_kb = out_path.stat().st_size / 1024
+    return f"{filename} ({size_kb:.1f} KB)"
 
 
 # ─── CHUNKING ──────────────────────────────────────────────────────────────────
 
 def chunk_pdf(pdf_path: str) -> list[dict]:
-    """
-    Pipeline per page:
-    1. fitz _inspect_page()  → lightweight scan, decides which library to invoke
-    2. Each type is ADDITIVE — a page can produce TEXT + VECTOR_GRAPHIC together
-    3. pdfplumber opened only when page has text (never for pure image pages)
-    """
     all_chunks = []
+    pdf_stem   = Path(pdf_path).stem
+
+    Path(IMAGES_OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size    = CHUNK_SIZE,
@@ -83,72 +94,77 @@ def chunk_pdf(pdf_path: str) -> list[dict]:
     for i in range(len(fitz_doc)):
         page_num  = i + 1
         fitz_page = fitz_doc[i]
+        page_info = _inspect_page(fitz_page, fitz_doc, page_num)
 
-        # ── STEP 1: fitz inspects the page — one call, results cached ─────────
-        page_info = _inspect_page(fitz_page, fitz_doc)
-
-        # ── STEP 2: fitz — visual content (additive, no continue) ─────────────
-
-        # Vector graphic — Vision gestisce l'intera pagina
+        # ── VECTOR GRAPHIC → pagina intera come JPEG ──────────────────────────
         if page_info["has_vector"]:
+            saved = _save_vector_graphic(fitz_page, pdf_stem, page_num)
             all_chunks.append({
                 "type":    "VECTOR_GRAPHIC",
                 "page":    page_num,
                 "content": (
                     f"[VECTOR_GRAPHIC - page {page_num}]\n"
                     f"[PLACEHOLDER - production: Claude Vision Haiku caption]\n"
+                    f"[saved: {saved}]\n"
                     f"[/VECTOR_GRAPHIC]"
                 ),
             })
-            continue  # ← Vision gestisce tutta la pagina, skip pdfplumber
+            continue
 
-        # Embedded images — full image page, Vision gestisce tutto
+        # ── IMAGE PURA (no testo) → immagine estratta ─────────────────────────
         if page_info["has_image"] and not page_info["has_text"]:
+            img_idx = 0
             for img in page_info["images"]:
                 xref = img[0]
                 try:
                     info = fitz_doc.extract_image(xref)
                     w, h = info.get("width", 0), info.get("height", 0)
                     if w > IMAGE_MIN_SIZE and h > IMAGE_MIN_SIZE:
+                        img_idx += 1
+                        ext   = info.get("ext", "png")
+                        saved = _save_image(info["image"], ext, pdf_stem, page_num, img_idx)
                         all_chunks.append({
                             "type":    "IMAGE",
                             "page":    page_num,
                             "content": (
                                 f"[IMAGE - page {page_num}]\n"
                                 f"[PLACEHOLDER - production: Claude Vision Haiku caption]\n"
+                                f"[saved: {saved}]\n"
                                 f"[/IMAGE]"
                             ),
                         })
-                except Exception:
-                    pass
-            continue  # ← Vision gestisce tutta la pagina, skip pdfplumber
+                except Exception as e:
+                    print(f"  ⚠ Error extracting image on page {page_num}: {e}")
+            continue
 
-        # Embedded images su pagine miste (has_text = True) — solo placeholder
+        # ── IMAGE MISTA (has_text = True) → immagine estratta + testo ─────────
         if page_info["has_image"]:
+            img_idx = 0
             for img in page_info["images"]:
                 xref = img[0]
                 try:
                     info = fitz_doc.extract_image(xref)
                     w, h = info.get("width", 0), info.get("height", 0)
                     if w > IMAGE_MIN_SIZE and h > IMAGE_MIN_SIZE:
+                        img_idx += 1
+                        ext   = info.get("ext", "png")
+                        saved = _save_image(info["image"], ext, pdf_stem, page_num, img_idx)
                         all_chunks.append({
                             "type":    "IMAGE",
                             "page":    page_num,
                             "content": (
                                 f"[IMAGE - page {page_num}]\n"
                                 f"[PLACEHOLDER - production: Claude Vision Haiku caption]\n"
+                                f"[saved: {saved}]\n"
                                 f"[/IMAGE]"
                             ),
                         })
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"  ⚠ Error extracting image on page {page_num}: {e}")
 
-        # ── STEP 3: pdfplumber — text + tables (only if page has text) ────────
+        # ── TEXT + TABLE → pdfplumber ──────────────────────────────────────────
         if page_info["has_text"]:
             plumber_page = plumber_pdf.pages[i]
-            table_bboxes = []
-
-            # Tables — always let pdfplumber decide
             tables       = plumber_page.find_tables()
             table_bboxes = [t.bbox for t in tables]
 
@@ -169,8 +185,6 @@ def chunk_pdf(pdf_path: str) -> list[dict]:
                         if pairs:
                             rows.append(" | ".join(pairs))
 
-                    # MIN_TABLE_ROWS = 2 — filters chapter titles (1 row)
-                    # but keeps real data tables with 2+ rows
                     if rows and len(rows) >= MIN_TABLE_ROWS:
                         all_chunks.append({
                             "type":    "TABLE",
@@ -178,7 +192,6 @@ def chunk_pdf(pdf_path: str) -> list[dict]:
                             "content": "[TABLE]\n" + "\n".join(rows) + "\n[/TABLE]",
                         })
 
-            # Text — exclude table bounding boxes to avoid duplication
             if table_bboxes:
                 filtered  = plumber_page.filter(
                     lambda obj: not any(
@@ -211,7 +224,9 @@ def run_test(pdf_path: str) -> None:
     pdf_name    = Path(pdf_path).name
     output_path = str(Path(pdf_path).with_suffix("")) + "_chunks_final.txt"
 
-    print(f"Processing: {pdf_name}")
+    print(f"\nProcessing: {pdf_name}")
+    print(f"DRAWING_THRESHOLD: {DRAWING_THRESHOLD}")
+    print("─" * 60)
 
     try:
         chunks = chunk_pdf(pdf_path)
@@ -225,6 +240,9 @@ def run_test(pdf_path: str) -> None:
             f.write(f"{'='*60}\n")
             f.write(f"PDF: {pdf_name}\n")
             f.write(f"Chunk size: {CHUNK_SIZE} | Overlap: {CHUNK_OVERLAP}\n")
+            f.write(f"DPI: {DPI} | JPEG quality: {JPEG_QUALITY}\n")
+            f.write(f"Drawing threshold: {DRAWING_THRESHOLD}\n")
+            f.write(f"Images output dir: {IMAGES_OUTPUT_DIR}\n")
             f.write(f"Total chunks: {len(chunks)}\n")
             f.write(f"  TEXT:          {n_text}\n")
             f.write(f"  TABLE:         {n_tables}  (atomic)\n")
@@ -237,8 +255,9 @@ def run_test(pdf_path: str) -> None:
                 f.write(chunk["content"])
                 f.write(f"\n\n{'─'*40}\n\n")
 
-        print(f"  ✓ {len(chunks)} chunks → {output_path}")
+        print(f"\n  ✓ {len(chunks)} chunks → {output_path}")
         print(f"    TEXT: {n_text} | TABLE: {n_tables} | IMAGE: {n_images} | VECTOR: {n_vectors}")
+        print(f"    Images saved to: {IMAGES_OUTPUT_DIR}")
 
     except FileNotFoundError:
         print(f"  ✗ File not found: {pdf_path}")
