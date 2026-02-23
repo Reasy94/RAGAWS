@@ -60,7 +60,8 @@ def seed():
             file_name TEXT UNIQUE,
             embedding_model TEXT,
             ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ingested_from TEXT
+            ingested_from TEXT,
+            status TEXT DEFAULT 'processing'
             );
         """)
         cur.execute("""
@@ -68,6 +69,7 @@ def seed():
             file_hash TEXT REFERENCES fileIngested(file_hash) ON DELETE CASCADE,
             page_number INTEGER,
             chunk_id INTEGER,
+            chunk_type TEXT,
             content TEXT,
             embedding vector(1024),
             PRIMARY KEY (file_hash, page_number, chunk_id)
