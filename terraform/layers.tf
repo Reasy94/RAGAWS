@@ -1,4 +1,4 @@
-# Layer codice condiviso — semplice zip
+# Layer codice condiviso
 data "archive_file" "shared_layer" {
   type        = "zip"
   source_dir  = "${path.module}/../layers/shared"
@@ -6,16 +6,16 @@ data "archive_file" "shared_layer" {
 }
 
 resource "aws_lambda_layer_version" "shared" {
-  layer_name          = "shared-utils"
+  layer_name          = "${var.project_name}-shared-utils"
   filename            = data.archive_file.shared_layer.output_path
   source_code_hash    = data.archive_file.shared_layer.output_base64sha256
   compatible_runtimes = ["python3.12"]
 }
 
-# Layer dipendenze — build in CodeBuild
+# Layer dipendenze (CodeBuild caricherà lo zip su S3)
 resource "aws_lambda_layer_version" "dependencies" {
-  layer_name          = "python-dependencies"
-  s3_bucket           = aws_s3_bucket.artifacts.id
+  layer_name          = "${var.project_name}-python-deps"
+  s3_bucket           = aws_s3_bucket.rag_documents.id # Usa il nome corretto del tuo bucket
   s3_key              = "layers/dependencies.zip"
   compatible_runtimes = ["python3.12"]
 }
