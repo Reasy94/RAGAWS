@@ -1,1 +1,0 @@
-opensearch_admin_password = "RAGOpenSearch2026AWS!"
