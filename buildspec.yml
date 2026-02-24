@@ -28,7 +28,7 @@ phases:
   build:
     commands:
       - echo "1. Running Terraform Apply..."
-      - terraform apply -auto-approve
+      - terraform plan
 
       - DB_HOST=$(terraform output -raw db_instance_address)
       - DB_PASS=$(terraform output -raw db_password)
