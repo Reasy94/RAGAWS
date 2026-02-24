@@ -1,94 +1,24 @@
 import boto3
-import os
 import logging
 import json
-import hashlib
-import numpy as np
-import psycopg2
-import psycopg2.pool
+
+from shared.config import (
+    MAX_INPUT_CHARS, HAIKU_MODEL_ID, RERANK_MODEL_ID,
+    RETRIEVAL_TOP_K, RERANK_TOP_N, CACHE_SIMILARITY, CACHE_TTL_HOURS,
+)
+from shared.db import get_conn, put_conn
+from shared.embeddings import get_embedding, _find_closest_domain
 
 # --- Logger Setup ---
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# ─── CONFIGURAZIONE ────────────────────────────────────────────────────────────
-
-MAX_INPUT_CHARS   = 8000
-RETRIEVAL_TOP_K   = 20
-RERANK_TOP_N      = 5
-CACHE_SIMILARITY  = 0.95
-CACHE_TTL_HOURS   = 24
-
-TITAN_MODEL_ID   = "amazon.titan-embed-text-v2:0"
-HAIKU_MODEL_ID   = "anthropic.claude-3-haiku-20240307-v1:0"
-RERANK_MODEL_ID  = "cohere.rerank-v3-5:0"
-
 bedrock = boto3.client("bedrock-runtime")
-
-
-# ─── DATABASE ─────────────────────────────────────────────────────────────────
-
-def get_db_config() -> dict:
-    secret_arn = os.environ.get("SECRET_ARN")
-    client     = boto3.client("secretsmanager")
-    try:
-        response = client.get_secret_value(SecretId=secret_arn)
-        secret   = json.loads(response["SecretString"])
-        return {
-            "host":     secret["host"],
-            "database": secret["db_name"],
-            "user":     secret["username"],
-            "password": secret["password"],
-            "port":     secret.get("port", 5432),
-        }
-    except Exception as e:
-        logger.error(f"Failed to retrieve database secrets: {str(e)}")
-        raise
-
-
-DB_CONFIG = get_db_config()
-
-connection_pool = psycopg2.pool.SimpleConnectionPool(
-    minconn=1,
-    maxconn=5,
-    **DB_CONFIG
-)
-
-
-def get_conn():
-    conn = connection_pool.getconn()
-    try:
-        conn.cursor().execute("SELECT 1")
-    except Exception:
-        logger.warning("Zombie connection detected, reopening...")
-        try:
-            conn.close()
-        except Exception:
-            pass
-        conn = psycopg2.connect(**DB_CONFIG)
-    return conn
-
-
-# ─── EMBEDDING ────────────────────────────────────────────────────────────────
-
-def get_embedding(text: str) -> list[float]:
-    response = bedrock.invoke_model(
-        modelId     = TITAN_MODEL_ID,
-        contentType = "application/json",
-        accept      = "application/json",
-        body        = json.dumps({"inputText": text[:MAX_INPUT_CHARS]}),
-    )
-    body = json.loads(response["body"].read())
-    return body["embedding"]
 
 
 # ─── SEMANTIC CACHE ───────────────────────────────────────────────────────────
 
 def check_cache(query_embedding: list[float]) -> dict | None:
-    """
-    Check if a semantically similar query has been cached recently.
-    Returns cached response if similarity > CACHE_SIMILARITY and within TTL.
-    """
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -102,7 +32,7 @@ def check_cache(query_embedding: list[float]) -> dict | None:
         """, (query_embedding, CACHE_TTL_HOURS, query_embedding))
         row = cur.fetchone()
         if row and row[3] >= CACHE_SIMILARITY:
-            logger.info(f"Cache HIT (similarity: {row[3]:.3f}) for query similar to: {row[0][:50]}...")
+            logger.info(f"Cache HIT (similarity: {row[3]:.3f})")
             return {
                 "response": row[1],
                 "sources":  json.loads(row[2]) if isinstance(row[2], str) else row[2],
@@ -114,11 +44,10 @@ def check_cache(query_embedding: list[float]) -> dict | None:
         logger.warning(f"Cache check failed: {e}")
         return None
     finally:
-        connection_pool.putconn(conn)
+        put_conn(conn)
 
 
 def store_cache(query_text: str, query_embedding: list[float], response: str, sources: list[dict]):
-    """Store query-response pair in semantic cache."""
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -137,29 +66,32 @@ def store_cache(query_text: str, query_embedding: list[float], response: str, so
         conn.rollback()
         logger.warning(f"Cache store failed: {e}")
     finally:
-        connection_pool.putconn(conn)
+        put_conn(conn)
 
 
-# ─── HyDE (Hypothetical Document Embeddings) ─────────────────────────────────
+# ─── HyDE ─────────────────────────────────────────────────────────────────────
 
 def generate_hypothetical_document(query: str) -> str:
-    """
-    Use Haiku to generate a hypothetical document that would answer the query.
-    The embedding of this synthetic doc matches better against real chunks
-    than the short query embedding alone.
-    """
+    examples_text = "\n\n".join([f"EXAMPLE {i+1}:\n{chunk}" for i, chunk in enumerate(style_chunks)])
+
+    prompt_content = (
+        "You are an expert technical writer. Below are examples of the writing style, "
+        "terminology, and structure used in our database documents.\n\n"
+        f"=== STYLE EXAMPLES ===\n{examples_text}\n\n"
+        "=== TASK ===\n"
+        "Write a brief paragraph (max 200 words) that answers the following question. "
+        "You must strictly mimic the style, professional tone, and specific vocabulary "
+        "shown in the examples above. Do not include any preambles; write the answer directly.\n\n"
+        f"Question: {query}"
+    )
     body = json.dumps({
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens":        300,
         "messages": [{
             "role": "user",
-            "content": (
-                "Scrivi un breve paragrafo (massimo 200 parole) che risponda "
-                "in modo dettagliato e tecnico alla seguente domanda. "
-                "Non aggiungere preamboli, scrivi direttamente la risposta.\n\n"
-                f"Domanda: {query}"
-            )
+            "content": prompt_content
         }],
+        "temperature" : 0.5
     })
 
     response = bedrock.invoke_model(
@@ -177,9 +109,6 @@ def generate_hypothetical_document(query: str) -> str:
 # ─── VECTOR SEARCH ────────────────────────────────────────────────────────────
 
 def vector_search(query_embedding: list[float], top_k: int = RETRIEVAL_TOP_K) -> list[dict]:
-    """
-    Retrieve top_k chunks from pgvector ordered by cosine similarity.
-    """
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -209,15 +138,12 @@ def vector_search(query_embedding: list[float], top_k: int = RETRIEVAL_TOP_K) ->
         logger.info(f"Vector search returned {len(results)} chunks")
         return results
     finally:
-        connection_pool.putconn(conn)
+        put_conn(conn)
 
 
 # ─── RERANKER ─────────────────────────────────────────────────────────────────
 
 def rerank(query: str, chunks: list[dict], top_n: int = RERANK_TOP_N) -> list[dict]:
-    """
-    Use Cohere Rerank 3.5 on Bedrock to reorder chunks by relevance.
-    """
     if not chunks:
         return []
 
@@ -255,16 +181,12 @@ def rerank(query: str, chunks: list[dict], top_n: int = RERANK_TOP_N) -> list[di
 # ─── GENERATION ───────────────────────────────────────────────────────────────
 
 def generate_response(query: str, chunks: list[dict]) -> str:
-    """
-    Use Haiku to generate a grounded response based on retrieved chunks.
-    """
     if not chunks:
-        return "Non ho trovato informazioni sufficienti per rispondere alla domanda."
+        return "I could not find sufficient information to answer the question."
 
-    # Build context from reranked chunks
     context_parts = []
     for i, chunk in enumerate(chunks, 1):
-        source_info = f"[Fonte {i}: {chunk['file_name']}, pag. {chunk['page_number']}]"
+        source_info = f"[Source {i}: {chunk['file_name']}, page {chunk['page_number']}]"
         context_parts.append(f"{source_info}\n{chunk['content']}")
 
     context = "\n\n---\n\n".join(context_parts)
@@ -273,18 +195,17 @@ def generate_response(query: str, chunks: list[dict]) -> str:
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens":        1024,
         "system": (
-            "Sei un assistente esperto che risponde basandosi ESCLUSIVAMENTE "
-            "sui documenti forniti come contesto. Se il contesto non contiene "
-            "informazioni sufficienti, dillo chiaramente. "
-            "Cita le fonti usando il formato [Fonte N] quando fai riferimento "
-            "a informazioni specifiche."
+            "You are an expert assistant. Your answers must be grounded strictly and exclusively in the "
+            "provided context. If the context lacks sufficient information to answer the question, "
+            "explicitly state that you cannot find the answer. "
+            "Always cite your sources using the format [Source N] for any specific information referenced."
         ),
         "messages": [{
             "role": "user",
             "content": (
-                f"Contesto:\n\n{context}\n\n"
-                f"---\n\nDomanda: {query}\n\n"
-                "Rispondi in modo chiaro e dettagliato basandoti solo sul contesto fornito."
+                f"Context:\n\n{context}\n\n"
+                f"---\n\Question: {query}\n\n"
+                "Answer clearly and in detail, relying strictly on the provided context only."
             )
         }],
     })
@@ -302,13 +223,7 @@ def generate_response(query: str, chunks: list[dict]) -> str:
 # ─── ENTRY POINT ──────────────────────────────────────────────────────────────
 
 def lambda_handler(event, context):
-    """
-    API Gateway integration.
-    Expects: { "query": "..." }
-    Returns: { "response": "...", "sources": [...], "cached": bool }
-    """
     try:
-        # Parse request
         if isinstance(event.get("body"), str):
             body = json.loads(event["body"])
         else:
@@ -320,7 +235,7 @@ def lambda_handler(event, context):
 
         logger.info(f"Query received: {query[:100]}...")
 
-        # Step 1: Embed the original query
+        # Step 1: Embed original query
         query_embedding = get_embedding(query)
 
         # Step 2: Check semantic cache
@@ -328,37 +243,36 @@ def lambda_handler(event, context):
         if cached:
             return _api_response(200, cached)
 
-        # Step 3: HyDE — generate hypothetical document and embed it
+        # Step 3: HyDE
         hypothetical_doc = generate_hypothetical_document(query)
         hyde_embedding   = get_embedding(hypothetical_doc)
 
-        # Step 4: Vector search using HyDE embedding
+        # Step 4: Vector search with HyDE embedding
         candidates = vector_search(hyde_embedding, top_k=RETRIEVAL_TOP_K)
 
         if not candidates:
-            response_text = "Non ho trovato documenti rilevanti per rispondere alla domanda."
             return _api_response(200, {
-                "response": response_text,
+                "response": "I could not find any relevant documents to answer the question.",
                 "sources":  [],
                 "cached":   False,
             })
 
-        # Step 5: Rerank using original query (not HyDE)
+        # Step 5: Rerank with original query
         top_chunks = rerank(query, candidates, top_n=RERANK_TOP_N)
 
-        # Step 6: Generate grounded response
+        # Step 6: Generate response
         response_text = generate_response(query, top_chunks)
 
-        # Step 7: Build sources list
+        # Step 7: Build sources
         sources = [{
-            "file_name":   c["file_name"],
-            "page_number": c["page_number"],
-            "chunk_type":  c["chunk_type"],
+            "file_name":    c["file_name"],
+            "page_number":  c["page_number"],
+            "chunk_type":   c["chunk_type"],
             "rerank_score": round(c["rerank_score"], 3),
-            "snippet":     c["content"][:200],
+            "snippet":      c["content"][:200],
         } for c in top_chunks]
 
-        # Step 8: Store in cache
+        # Step 8: Cache
         store_cache(query, query_embedding, response_text, sources)
 
         return _api_response(200, {

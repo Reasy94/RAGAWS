@@ -83,6 +83,25 @@ def seed():
                 PRIMARY KEY (file_hash, page_number, chunk_id)
             );
         """)
+        cur.execute("""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS chunks_embedding_hnsw_idx 
+            ON chunks USING hnsw (embedding vector_cosine_ops);
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS query_cache (
+                id SERIAL PRIMARY KEY,
+                query_text TEXT NOT NULL,
+                response TEXT,
+                sources JSONB,
+                query_embedding VECTOR(1024),
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        """)
+        cur.execute("""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS query_cache_embedding_hnsw_idx 
+            ON query_cache USING hnsw (query_embedding vector_cosine_ops);
+        """)
 
         print("Starting seeding process...")
         for item in domains_data:

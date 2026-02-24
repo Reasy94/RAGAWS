@@ -1,9 +1,6 @@
 import boto3
-import os
 import logging
 import json
-import psycopg2
-import psycopg2.pool
 import io
 import hashlib
 import base64
@@ -12,27 +9,17 @@ import fitz
 import numpy as np
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from shared.config import (
+    CHUNK_SIZE, CHUNK_OVERLAP, IMAGE_MIN_SIZE, DRAWING_THRESHOLD,
+    MIN_TABLE_ROWS, PAGE_FLUSH_SIZE, MAX_INPUT_CHARS, HAIKU_MODEL_ID,
+    PAGE_WEIGHTS, TEXT_PAGES_NEEDED, MIN_TEXT_LENGTH, DOMAIN_SIMILARITY_THRESHOLD,
+)
+from shared.db import get_conn, put_conn
+from shared.embeddings import get_embedding, _find_closest_domain
+
 # --- Logger Setup ---
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-# ─── CONFIGURAZIONE ────────────────────────────────────────────────────────────
-
-CHUNK_SIZE        = 500
-CHUNK_OVERLAP = int(CHUNK_SIZE * 0.10)
-IMAGE_MIN_SIZE    = 200
-DRAWING_THRESHOLD = 50
-MIN_TABLE_ROWS    = 2
-PAGE_FLUSH_SIZE   = 50
-MAX_INPUT_CHARS   = 8000
-
-TITAN_MODEL_ID = "amazon.titan-embed-text-v2:0"
-HAIKU_MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
-
-PAGE_WEIGHTS                = [0.5, 0.3, 0.2]
-TEXT_PAGES_NEEDED           = 3
-MIN_TEXT_LENGTH             = 100
-DOMAIN_SIMILARITY_THRESHOLD = 0.75
 
 bedrock = boto3.client("bedrock-runtime")
 
@@ -83,19 +70,18 @@ def _call_haiku_vision(image_b64: str, media_type: str = "image/jpeg", context_t
         user_content.append({
             "type": "text",
             "text": (
-                "Ecco il testo estratto dalla stessa pagina del grafico:\n\n"
+                "Here is the text extracted from the same page as the chart:\n\n"
                 f"{context_text}\n\n"
-                "Basandoti su questo testo, descrivi in dettaglio il contenuto "
-                "del grafico/figura presente nell'immagine: pannelli, trend, "
-                "valori chiave, scenari e paesi rappresentati."
+                "Based on this text, describe in detail the content of the chart/figure "
+                "present in the image: panels, trends, key values, scenarios and countries represented."
             )
         })
     else:
         user_content.append({
             "type": "text",
             "text": (
-                "Descrivi in dettaglio il contenuto di questo grafico/figura: "
-                "pannelli, trend, valori chiave, scenari e paesi rappresentati."
+                "Describe in detail the content of this chart/figure: "
+                "panels, trends, key values, scenarios, and countries represented."
             )
         })
 
@@ -124,64 +110,10 @@ def _call_haiku_vision(image_b64: str, media_type: str = "image/jpeg", context_t
     return result["content"][0]["text"].strip()
 
 
-# ─── EMBEDDING ────────────────────────────────────────────────────────────────
-
-def get_embedding(text: str) -> list[float]:
-    response = bedrock.invoke_model(
-        modelId     = TITAN_MODEL_ID,
-        contentType = "application/json",
-        accept      = "application/json",
-        body        = json.dumps({"inputText": text}),
-    )
-    body = json.loads(response["body"].read())
-    return body["embedding"]
-
-
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 def calculate_file_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
-
-def get_db_config() -> dict:
-    secret_arn = os.environ.get("SECRET_ARN")
-    client     = boto3.client("secretsmanager")
-    try:
-        response = client.get_secret_value(SecretId=secret_arn)
-        secret   = json.loads(response["SecretString"])
-        return {
-            "host":     secret["host"],
-            "database": secret["db_name"],
-            "user":     secret["username"],
-            "password": secret["password"],
-            "port":     secret.get("port", 5432),
-        }
-    except Exception as e:
-        logger.error(f"Failed to retrieve database secrets: {str(e)}")
-        raise
-
-
-DB_CONFIG = get_db_config()
-
-connection_pool = psycopg2.pool.SimpleConnectionPool(
-    minconn=1,
-    maxconn=5,
-    **DB_CONFIG
-)
-
-
-def get_conn():
-    conn = connection_pool.getconn()
-    try:
-        conn.cursor().execute("SELECT 1")
-    except Exception:
-        logger.warning("Zombie connection detected, reopening...")
-        try:
-            conn.close()
-        except Exception:
-            pass
-        conn = psycopg2.connect(**DB_CONFIG)
-    return conn
 
 
 # ─── ENTRY POINT ──────────────────────────────────────────────────────────────
@@ -261,35 +193,6 @@ def get_document_domain(pdf: pdfplumber.PDF) -> int | None:
     return _find_closest_domain(centroid)
 
 
-def _find_closest_domain(centroid: list[float]) -> int | None:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id_domain, domain_name,
-                   1 - (embedding_domain <=> %s::vector) AS similarity
-            FROM domains
-            ORDER BY embedding_domain <=> %s::vector
-            LIMIT 1
-        """, (centroid, centroid))
-        row = cur.fetchone()
-        if not row:
-            return None
-
-        id_domain, domain_name, similarity = row
-        if similarity < DOMAIN_SIMILARITY_THRESHOLD:
-            logger.warning(
-                f"Closest domain '{domain_name}' similarity {similarity:.3f} "
-                f"below threshold {DOMAIN_SIMILARITY_THRESHOLD} → unknown domain"
-            )
-            return None
-
-        logger.info(f"Domain detected: '{domain_name}' (similarity: {similarity:.3f})")
-        return id_domain
-    finally:
-        connection_pool.putconn(conn)
-
-
 # ─── PDF PROCESSING ───────────────────────────────────────────────────────────
 
 def _process_pdf(file_content: bytes, file_hash: str, key: str):
@@ -301,7 +204,7 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
 
     buffer        = []
     total_chunks  = 0
-    last_caption  = None   # ← carries the last IMAGE/VECTOR_GRAPHIC caption for context enrichment
+    last_caption  = None
 
     with fitz.open(stream=file_content, filetype="pdf") as fitz_doc, \
          pdfplumber.open(io.BytesIO(file_content)) as plumber_pdf:
@@ -314,7 +217,7 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
             page_chunk_id = 0
             page_info     = _inspect_page(fitz_page, fitz_doc)
 
-            # ── VECTOR GRAPHIC → full page like JPEG a Vision ─────────────
+            # ── VECTOR GRAPHIC ────────────────────────────────────────────
             if page_info["has_vector"]:
                 logger.info(f"Page {page_num}: VECTOR_GRAPHIC → Haiku Vision")
                 try:
@@ -336,7 +239,7 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                 _maybe_flush(buffer, page_num, total_pages, key)
                 continue
 
-            # ── IMAGE PURA (no testo) → immagine estratta a Vision ────────────
+            # ── IMAGE PURA (no testo) ─────────────────────────────────────
             if page_info["has_image"] and not page_info["has_text"]:
                 logger.info(f"Page {page_num}: pure IMAGE → Haiku Vision")
                 for img in page_info["images"]:
@@ -366,7 +269,7 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                 _maybe_flush(buffer, page_num, total_pages, key)
                 continue
 
-            # ── IMAGE MISTA (has_text = True) → Vision con contesto testuale ──
+            # ── IMAGE MISTA (has_text = True) ─────────────────────────────
             if page_info["has_image"]:
                 plumber_page = plumber_pdf.pages[i]
                 context_text = plumber_page.extract_text() or ""
@@ -394,7 +297,7 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                     except Exception as e:
                         logger.error(f"Vision error on page {page_num} xref {xref}: {e}")
 
-            # ── TEXT + TABLE → pdfplumber ──────────────────────────────────────
+            # ── TEXT + TABLE ───────────────────────────────────────────────
             if page_info["has_text"]:
                 plumber_page = plumber_pdf.pages[i]
                 tables       = plumber_page.find_tables()
@@ -441,11 +344,11 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                 if page_text and page_text.strip():
                     first_text_chunk = True
                     for chunk_text in splitter.split_text(page_text.strip()):
-                        # ── Context enrichment: prepend caption to first TEXT chunk after IMAGE/VECTOR_GRAPHIC ──
+                        # Context enrichment: prepend caption to first TEXT chunk
                         if first_text_chunk and last_caption:
                             truncated_caption = _truncate_at_sentence(last_caption, CHUNK_OVERLAP)
                             chunk_text = f"[Figura: {truncated_caption}]\n\n{chunk_text}"
-                            last_caption  = None
+                            last_caption     = None
                             first_text_chunk = False
 
                         page_chunk_id += 1
@@ -456,13 +359,11 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                             chunk_type = "TEXT",
                             content    = chunk_text,
                         ))
-                    # Reset last_caption after TEXT chunks consumed it (or if no enrichment needed)
                     last_caption = None
 
             total_chunks += page_chunk_id
             _maybe_flush(buffer, page_num, total_pages, key)
 
-        # Flush finale se rimane qualcosa nel buffer
         if buffer:
             save_chunks_to_rds(buffer)
             buffer.clear()
@@ -471,7 +372,6 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
 
 
 def _truncate_at_sentence(text: str, max_chars: int) -> str:
-    """Truncate text at the nearest sentence boundary, up to max_chars."""
     if len(text) <= max_chars:
         return text
     cut = text[:max_chars]
@@ -540,7 +440,7 @@ def upsert_file_record(file_name: str, file_hash: str, id_domain: int | None):
             ON CONFLICT (file_hash) DO UPDATE SET
                 ingested_at = CURRENT_TIMESTAMP,
                 status      = 'processing'
-        """, (file_hash, file_name, id_domain, TITAN_MODEL_ID, "S3_Lambda_Processor"))
+        """, (file_hash, file_name, id_domain, "amazon.titan-embed-text-v2:0", "S3_Lambda_Processor"))
         conn.commit()
         logger.info(f"File record upserted with status 'processing': {file_name}")
     except Exception as e:
@@ -548,7 +448,7 @@ def upsert_file_record(file_name: str, file_hash: str, id_domain: int | None):
         logger.error(f"DB error upserting file record: {str(e)}")
         raise
     finally:
-        connection_pool.putconn(conn)
+        put_conn(conn)
 
 
 def update_file_status(file_hash: str, status: str):
@@ -566,7 +466,7 @@ def update_file_status(file_hash: str, status: str):
         conn.rollback()
         logger.error(f"DB error updating file status: {str(e)}")
     finally:
-        connection_pool.putconn(conn)
+        put_conn(conn)
 
 
 def save_chunks_to_rds(chunks: list[dict]):
@@ -593,4 +493,4 @@ def save_chunks_to_rds(chunks: list[dict]):
         logger.error(f"DB error saving chunks: {str(e)}")
         raise
     finally:
-        connection_pool.putconn(conn)
+        put_conn(conn)

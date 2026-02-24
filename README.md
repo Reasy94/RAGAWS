@@ -2,7 +2,7 @@
 
 A production-ready Retrieval-Augmented Generation (RAG) system built entirely on AWS serverless infrastructure. The pipeline ingests PDF and text documents, performs multimodal chunking (text, tables, images, vector graphics), and answers questions with grounded, cited responses.
 
-Built as a portfolio project to demonstrate end-to-end ML engineering: from infrastructure-as-code to retrieval optimization.
+Built as a portfolio project to demonstrate end-to-end ML engineering: from IaaS to retrieval optimization.
 
 ## Architecture
 
