@@ -36,3 +36,28 @@ resource "aws_lambda_function" "process_doc" {
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
 } 	
+
+
+resource "aws_lambda_function" "ingestion" {
+  function_name = "ingestion"
+  handler       = "lambda_function.lambda_handler"
+  runtime       = "python3.12"
+  filename      = data.archive_file.ingestion.output_path
+  role          = aws_iam_role.lambda_role.arn
+  layers = [
+    aws_lambda_layer_version.shared.arn,
+    aws_lambda_layer_version.dependencies.arn,
+  ]
+}
+
+resource "aws_lambda_function" "retrieval" {
+  function_name = "retrieval"
+  handler       = "lambda_function.lambda_handler"
+  runtime       = "python3.12"
+  filename      = data.archive_file.retrieval.output_path
+  role          = aws_iam_role.lambda_role.arn
+  layers = [
+    aws_lambda_layer_version.shared.arn,
+    aws_lambda_layer_version.dependencies.arn,
+  ]
+}
