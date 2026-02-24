@@ -3,7 +3,7 @@ import logging
 import json
 
 from shared.config import (
-    MAX_INPUT_CHARS, HAIKU_MODEL_ID, RERANK_MODEL_ID,
+    HAIKU_MODEL_ID, RERANK_MODEL_ID,
     RETRIEVAL_TOP_K, RERANK_TOP_N, CACHE_SIMILARITY, CACHE_TTL_HOURS,
 )
 from shared.db import get_conn, put_conn
@@ -71,7 +71,29 @@ def store_cache(query_text: str, query_embedding: list[float], response: str, so
 
 # ─── HyDE ─────────────────────────────────────────────────────────────────────
 
-def generate_hypothetical_document(query: str) -> str:
+def get_style_chunks_by_domain(domain_id: int, limit: int = 3) -> list[str]:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT c.content 
+            FROM chunks c
+            JOIN fileIngested f ON c.file_hash = f.file_hash
+            WHERE f.id_domain = %s
+            ORDER BY RANDOM() 
+            LIMIT %s
+        """, (domain_id, limit))
+        
+        rows = cur.fetchall()
+        return [row[0] for row in rows]
+    except Exception as e:
+        logger.error(f"Error fetching style chunks: {e}")
+        return []
+    finally:
+        put_conn(conn)
+
+
+def generate_hypothetical_document(query: str, style_chunks: list[str]) -> str:
     examples_text = "\n\n".join([f"EXAMPLE {i+1}:\n{chunk}" for i, chunk in enumerate(style_chunks)])
 
     prompt_content = (
@@ -244,7 +266,16 @@ def lambda_handler(event, context):
             return _api_response(200, cached)
 
         # Step 3: HyDE
-        hypothetical_doc = generate_hypothetical_document(query)
+        domain_id = _find_closest_domain(query_embedding)
+        if domain_id is None:
+            logger.info("Query rejected: does not match any known domain.")
+            return _api_response(200, {
+                "response": "The question does not appear to be relevant to the available documentation.",
+                "sources": [],
+                "cached": False
+        })
+        style_chunks = get_style_chunks_by_domain(domain_id)
+        hypothetical_doc = generate_hypothetical_document(query, style_chunks)
         hyde_embedding   = get_embedding(hypothetical_doc)
 
         # Step 4: Vector search with HyDE embedding

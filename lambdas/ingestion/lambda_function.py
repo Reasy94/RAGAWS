@@ -12,7 +12,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from shared.config import (
     CHUNK_SIZE, CHUNK_OVERLAP, IMAGE_MIN_SIZE, DRAWING_THRESHOLD,
     MIN_TABLE_ROWS, PAGE_FLUSH_SIZE, MAX_INPUT_CHARS, HAIKU_MODEL_ID,
-    PAGE_WEIGHTS, TEXT_PAGES_NEEDED, MIN_TEXT_LENGTH, DOMAIN_SIMILARITY_THRESHOLD,
+    PAGE_WEIGHTS, TEXT_PAGES_NEEDED, MIN_TEXT_LENGTH,
 )
 from shared.db import get_conn, put_conn
 from shared.embeddings import get_embedding, _find_closest_domain
@@ -146,7 +146,7 @@ def process_single_file(bucket: str, key: str):
 
     if key.lower().endswith(".pdf"):
         with pdfplumber.open(io.BytesIO(file_content)) as pdf:
-            id_domain = get_document_domain(pdf)
+            id_domain = get_vector_domain(pdf)
         upsert_file_record(key, file_hash, id_domain)
         try:
             _process_pdf(file_content, file_hash, key)
@@ -155,23 +155,11 @@ def process_single_file(bucket: str, key: str):
             update_file_status(file_hash, "failed")
             logger.error(f"PDF processing failed for {key}: {e}")
             raise
-    else:
-        text      = file_content.decode("utf-8")
-        embedding = get_embedding(text[:MAX_INPUT_CHARS])
-        id_domain = _find_closest_domain(embedding)
-        upsert_file_record(key, file_hash, id_domain)
-        try:
-            _process_text(file_content, file_hash, key)
-            update_file_status(file_hash, "completed")
-        except Exception as e:
-            update_file_status(file_hash, "failed")
-            logger.error(f"Text processing failed for {key}: {e}")
-            raise
 
 
 # ─── DOMAIN DETECTION ─────────────────────────────────────────────────────────
 
-def get_document_domain(pdf: pdfplumber.PDF) -> int | None:
+def get_vector_domain(pdf: pdfplumber.PDF) -> int | None:
     text_pages = []
     for page in pdf.pages:
         text = page.extract_text() or ""
