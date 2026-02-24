@@ -5,10 +5,10 @@ phases:
     runtime-versions:
       python: 3.12
     commands:
-      - echo "Installing Terraform..."
+      - echo "Installing Terraform 1.14.4..."
       - sudo yum install -y yum-utils
       - sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
-      - sudo yum -y install terraform
+      - sudo yum -y install terraform-1.14.4
       - echo "Installing Python dependencies for Seeding..."
       - pip install psycopg2-binary boto3
 
