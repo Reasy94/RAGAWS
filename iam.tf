@@ -56,11 +56,6 @@ resource "aws_iam_role_policy_attachment" "ingestion_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy_attachment" "ingestion_vpc" {
-  role       = aws_iam_role.ingestion_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
-}
-
 
 # ─── RETRIEVAL ROLE ───────────────────────────────────────────────────────────
 
@@ -106,9 +101,4 @@ resource "aws_iam_role_policy_attachment" "retrieval_policy_attach" {
 resource "aws_iam_role_policy_attachment" "retrieval_basic" {
   role       = aws_iam_role.retrieval_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-resource "aws_iam_role_policy_attachment" "retrieval_vpc" {
-  role       = aws_iam_role.retrieval_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }

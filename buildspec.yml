@@ -14,15 +14,16 @@ phases:
 
   pre_build:
     commands:
-      - echo "Initializing Terraform..."
-      - terraform init
-
       - echo "Building Lambda dependencies layer..."
       - mkdir -p python
       - pip install -r layers/dependencies/requirements.txt -t python/ --platform manylinux2014_x86_64 --only-binary=":all:"
       - zip -r9 dependencies.zip python
       - aws s3 cp dependencies.zip s3://${ARTIFACTS_BUCKET}/layers/dependencies.zip
       - rm -rf python dependencies.zip
+
+      - echo "Initializing Terraform..."
+      - cd terraform
+      - terraform init
 
   build:
     commands:
@@ -33,6 +34,7 @@ phases:
       - DB_PASS=$(terraform output -raw db_password)
 
       - echo "2. Running Seed Script..."
+      - cd ..
       - export DB_HOST=$DB_HOST
       - export DB_PASS=$DB_PASS
       - export DB_NAME="ragdb"

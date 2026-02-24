@@ -1,12 +1,12 @@
 data "aws_caller_identity" "current" {}
 
+# ─── S3 BUCKET ────────────────────────────────────────────────────────────────
+
 resource "aws_s3_bucket" "rag_documents" {
   bucket = "${var.project_name}-${data.aws_caller_identity.current.account_id}"
-  lifecycle {
-    prevent_destroy = true # Protezione extra per i tuoi modelli ONNX
-  }
 }
 
+# S3 notification → SQS when new docs uploaded to ingestion/
 resource "aws_s3_bucket_notification" "bucket_notification" {
   bucket = aws_s3_bucket.rag_documents.id
 
@@ -29,4 +29,24 @@ resource "aws_sqs_queue_policy" "allow_s3" {
       Condition = { ArnEquals = { "aws:SourceArn" = aws_s3_bucket.rag_documents.arn } }
     }]
   })
+}
+
+
+# ─── SQS QUEUE ────────────────────────────────────────────────────────────────
+
+resource "aws_sqs_queue" "doc_processing_queue" {
+  name                       = "${var.project_name}-doc-processing"
+  visibility_timeout_seconds = 360  # > Lambda timeout (300s)
+  message_retention_seconds  = 86400
+  receive_wait_time_seconds  = 10
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.doc_processing_dlq.arn
+    maxReceiveCount     = 3
+  })
+}
+
+resource "aws_sqs_queue" "doc_processing_dlq" {
+  name                      = "${var.project_name}-doc-processing-dlq"
+  message_retention_seconds = 604800  # 7 days
 }

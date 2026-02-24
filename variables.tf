@@ -1,17 +1,11 @@
 variable "project_name" {
-  description = "Project name used for resource naming and tagging"
+  description = "Project name used as prefix for all resources"
   type        = string
-  default     = "rag-storage-project"
-}
-
-variable "bucket_models_name" {
-  description = "Name of the S3 bucket containing the ONNX models and PDF documents"
-  type        = string
-  default     = "rag-storage-project-054375299743"
+  default     = "rag-aws"
 }
 
 variable "rds_rag_username" {
-  description = "RAG username for RDS"
+  description = "RDS master username"
   type        = string
-  default     = "ragadmin"
+  default     = "postgres"
 }
