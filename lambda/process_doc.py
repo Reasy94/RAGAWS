@@ -19,7 +19,7 @@ logger.setLevel(logging.INFO)
 # ─── CONFIGURAZIONE ────────────────────────────────────────────────────────────
 
 CHUNK_SIZE        = 500
-CHUNK_OVERLAP     = 50
+CHUNK_OVERLAP = int(CHUNK_SIZE * 0.10)
 IMAGE_MIN_SIZE    = 200
 DRAWING_THRESHOLD = 50
 MIN_TABLE_ROWS    = 2
@@ -222,19 +222,19 @@ def process_single_file(bucket: str, key: str):
         except Exception as e:
             update_file_status(file_hash, "failed")
             logger.error(f"PDF processing failed for {key}: {e}")
-            raise  # ← rilancia per attivare il retry SQS
+            raise
     else:
         text      = file_content.decode("utf-8")
         embedding = get_embedding(text[:MAX_INPUT_CHARS])
         id_domain = _find_closest_domain(embedding)
-        upsert_file_record(key, file_hash, id_domain)  # status='processing'
+        upsert_file_record(key, file_hash, id_domain)
         try:
             _process_text(file_content, file_hash, key)
             update_file_status(file_hash, "completed")
         except Exception as e:
             update_file_status(file_hash, "failed")
             logger.error(f"Text processing failed for {key}: {e}")
-            raise  # ← rilancia per attivare il retry SQS
+            raise
 
 
 # ─── DOMAIN DETECTION ─────────────────────────────────────────────────────────
@@ -299,8 +299,9 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
         separators    = ["\n\n", "\n", ". ", " ", ""],
     )
 
-    buffer       = []
-    total_chunks = 0
+    buffer        = []
+    total_chunks  = 0
+    last_caption  = None   # ← carries the last IMAGE/VECTOR_GRAPHIC caption for context enrichment
 
     with fitz.open(stream=file_content, filetype="pdf") as fitz_doc, \
          pdfplumber.open(io.BytesIO(file_content)) as plumber_pdf:
@@ -327,16 +328,10 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                         chunk_type = "VECTOR_GRAPHIC",
                         content    = caption,
                     ))
+                    last_caption = caption
                 except Exception as e:
                     logger.error(f"Vision error on page {page_num} (VECTOR_GRAPHIC): {e}")
-                    page_chunk_id += 1
-                    buffer.append(_build_chunk(
-                        file_hash  = file_hash,
-                        page_num   = page_num,
-                        chunk_id   = page_chunk_id,
-                        chunk_type = "VECTOR_GRAPHIC",
-                        content    = caption,
-                    ))
+
                 total_chunks += page_chunk_id
                 _maybe_flush(buffer, page_num, total_pages, key)
                 continue
@@ -363,6 +358,7 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                             chunk_type = "IMAGE",
                             content    = caption,
                         ))
+                        last_caption = caption
                     except Exception as e:
                         logger.error(f"Vision error on page {page_num} xref {xref}: {e}")
 
@@ -394,6 +390,7 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                             chunk_type = "IMAGE",
                             content    = caption,
                         ))
+                        last_caption = caption
                     except Exception as e:
                         logger.error(f"Vision error on page {page_num} xref {xref}: {e}")
 
@@ -442,7 +439,15 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                     page_text = plumber_page.extract_text()
 
                 if page_text and page_text.strip():
+                    first_text_chunk = True
                     for chunk_text in splitter.split_text(page_text.strip()):
+                        # ── Context enrichment: prepend caption to first TEXT chunk after IMAGE/VECTOR_GRAPHIC ──
+                        if first_text_chunk and last_caption:
+                            truncated_caption = _truncate_at_sentence(last_caption, CHUNK_OVERLAP)
+                            chunk_text = f"[Figura: {truncated_caption}]\n\n{chunk_text}"
+                            last_caption  = None
+                            first_text_chunk = False
+
                         page_chunk_id += 1
                         buffer.append(_build_chunk(
                             file_hash  = file_hash,
@@ -451,6 +456,8 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
                             chunk_type = "TEXT",
                             content    = chunk_text,
                         ))
+                    # Reset last_caption after TEXT chunks consumed it (or if no enrichment needed)
+                    last_caption = None
 
             total_chunks += page_chunk_id
             _maybe_flush(buffer, page_num, total_pages, key)
@@ -461,6 +468,15 @@ def _process_pdf(file_content: bytes, file_hash: str, key: str):
             buffer.clear()
 
     logger.info(f"Completed ingestion for PDF: {key} ({total_chunks} total chunks)")
+
+
+def _truncate_at_sentence(text: str, max_chars: int) -> str:
+    """Truncate text at the nearest sentence boundary, up to max_chars."""
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars]
+    last_period = cut.rfind(". ")
+    return cut[:last_period + 1] if last_period > 0 else cut
 
 
 def _build_chunk(file_hash: str, page_num: int, chunk_id: int,
