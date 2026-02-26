@@ -9,32 +9,37 @@ phases:
       - sudo yum install -y yum-utils
       - sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
       - sudo yum -y install terraform-1.14.4
-      - echo "Installing Python dependencies for Seeding..."
+      - echo "Installing Python dependencies..."
       - pip install psycopg2-binary boto3
 
   pre_build:
     commands:
-      - echo "Building Lambda dependencies layer..."
-      - mkdir -p python
-      - pip install -r layers/dependencies/requirements.txt -t python/ --platform manylinux2014_x86_64 --only-binary=":all:"
-      - zip -r9 dependencies.zip python
-      - aws s3 cp dependencies.zip s3://${ARTIFACTS_BUCKET}/layers/dependencies.zip
-      - rm -rf python dependencies.zip
-
       - echo "Initializing Terraform..."
       - cd terraform
       - terraform init
 
   build:
     commands:
-      - echo "1. Running Terraform Apply..."
-      - terraform apply -auto-approve
+      - echo "Step 1 - Creating S3 bucket..."
+      - terraform apply -auto-approve -target=aws_s3_bucket.rag_documents -target=aws_s3_bucket_public_access_block.rag_documents -target=aws_s3_bucket_server_side_encryption_configuration.rag_documents
 
-      - echo "2. Fetching outputs..."
+      - echo "Step 2 - Building and uploading Lambda layer..."
+      - cd ..
+      - mkdir -p python
+      - pip install -r layers/dependencies/requirements.txt -t python/ --platform manylinux2014_x86_64 --only-binary=":all:"
+      - zip -r9 dependencies.zip python
+      - aws s3 cp dependencies.zip s3://${ARTIFACTS_BUCKET}/layers/dependencies.zip
+      - rm -rf python dependencies.zip
+      - cd terraform
+
+      - echo "Step 3 - Applying full Terraform..."
+      - terraform apply -auto-approve -refresh=true
+
+      - echo "Step 4 - Fetching outputs..."
       - DB_HOST=$(terraform output -raw db_instance_address)
       - DB_PASS=$(terraform output -raw db_password)
 
-      - echo "3. Running Seed Script..."
+      - echo "Step 5 - Running Seed Script..."
       - cd ..
       - export DB_HOST=$DB_HOST
       - export DB_PASS=$DB_PASS

@@ -15,7 +15,8 @@ resource "aws_lambda_layer_version" "shared" {
 # Layer dipendenze (CodeBuild caricherà lo zip su S3)
 resource "aws_lambda_layer_version" "dependencies" {
   layer_name          = "${var.project_name}-python-deps"
-  s3_bucket           = aws_s3_bucket.rag_documents.id # Usa il nome corretto del tuo bucket
+  s3_bucket           = aws_s3_bucket.rag_documents.id
   s3_key              = "layers/dependencies.zip"
   compatible_runtimes = ["python3.12"]
+  skip_destroy        = true
 }

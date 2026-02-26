@@ -15,7 +15,7 @@ resource "aws_db_instance" "rag_db" {
   allocated_storage      = 20
   db_name                = "ragdb"
   engine                 = "postgres"
-  engine_version         = "16.1"
+  engine_version         = "16.6"
   instance_class         = "db.t3.micro"
   username               = var.rds_rag_username
   password               = random_password.db_password.result
@@ -27,7 +27,7 @@ resource "aws_db_instance" "rag_db" {
 
   storage_encrypted = true
 
-  backup_retention_period = 7
+  backup_retention_period = 0
   backup_window           = "03:00-04:00"
   maintenance_window      = "Mon:04:00-Mon:05:00"
 }
