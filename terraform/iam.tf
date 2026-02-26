@@ -102,3 +102,44 @@ resource "aws_iam_role_policy_attachment" "retrieval_basic" {
   role       = aws_iam_role.retrieval_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
+
+
+# ─── UPLOAD ROLE ───────────────────────────────────────────────────────────
+
+resource "aws_iam_role" "upload_role" {
+  name = "${var.project_name}-upload-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_policy" "upload_policy" {
+  name = "${var.project_name}-upload-policy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "S3PutDocuments"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = ["${aws_s3_bucket.rag_documents.arn}/ingestion/*"]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "upload_policy_attach" {
+  role       = aws_iam_role.upload_role.name
+  policy_arn = aws_iam_policy.upload_policy.arn
+}
+
+resource "aws_iam_role_policy_attachment" "upload_basic" {
+  role       = aws_iam_role.upload_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
