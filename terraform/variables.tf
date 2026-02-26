@@ -9,3 +9,9 @@ variable "rds_rag_username" {
   type        = string
   default     = "postgres"
 }
+
+variable "aws_profile" {
+  description = "AWS CLI profile"
+  type        = string
+  default     = ""
+}

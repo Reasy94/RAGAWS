@@ -14,7 +14,8 @@ terraform {
 }
 
 provider "aws" {
-  region = "eu-central-1"
+  region  = "eu-central-1"
+  profile = var.aws_profile
 
   default_tags {
     tags = {
