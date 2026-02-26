@@ -28,12 +28,13 @@ phases:
   build:
     commands:
       - echo "1. Running Terraform Apply..."
-      - terraform plan
+      - terraform apply -auto-approve
 
+      - echo "2. Fetching outputs..."
       - DB_HOST=$(terraform output -raw db_instance_address)
       - DB_PASS=$(terraform output -raw db_password)
 
-      - echo "2. Running Seed Script..."
+      - echo "3. Running Seed Script..."
       - cd ..
       - export DB_HOST=$DB_HOST
       - export DB_PASS=$DB_PASS
@@ -44,7 +45,3 @@ phases:
   post_build:
     commands:
       - echo "Deploy completed on $(date)"
-
-artifacts:
-  files:
-    - "**/*"

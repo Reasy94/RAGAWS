@@ -32,7 +32,6 @@ resource "aws_codebuild_project" "terraform_apply" {
   }
 }
 
-
 # ─── CODEBUILD IAM ───────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "codebuild_role" {
@@ -48,9 +47,35 @@ resource "aws_iam_role" "codebuild_role" {
   })
 }
 
-# NOTE: AdministratorAccess is used for simplicity in a prototype.
-# In production, scope down to specific Terraform resources.
-resource "aws_iam_role_policy_attachment" "codebuild_admin" {
+resource "aws_iam_policy" "codebuild_policy" {
+  name        = "${var.project_name}-codebuild-policy"
+  description = "Permessi minimi per Terraform via CodeBuild"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:*",
+          "rds:*",
+          "lambda:*",
+          "s3:*",
+          "sqs:*",
+          "secretsmanager:*",
+          "apigateway:*",
+          "iam:*",
+          "logs:*",
+          "bedrock:*",
+          "kms:*",
+          "codebuild:*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "codebuild_policy_attach" {
   role       = aws_iam_role.codebuild_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  policy_arn = aws_iam_policy.codebuild_policy.arn
 }

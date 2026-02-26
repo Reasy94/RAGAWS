@@ -15,3 +15,8 @@ variable "aws_profile" {
   type        = string
   default     = ""
 }
+
+variable "my_ip" {
+  description = "My IP to access RDS"
+  type        = string
+}

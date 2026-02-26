@@ -21,18 +21,35 @@ resource "aws_db_instance" "rag_db" {
   password               = random_password.db_password.result
   parameter_group_name   = "default.postgres16"
   skip_final_snapshot    = true
-  publicly_accessible    = true  # Prototype only — use VPC in production
+  publicly_accessible    = false
   db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
+
+  storage_encrypted = true
+
+  backup_retention_period = 7
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "Mon:04:00-Mon:05:00"
 }
 
-
 # ─── SECRETS MANAGER ──────────────────────────────────────────────────────────
+
+resource "aws_kms_key" "secrets_key" {
+  description             = "KMS key for Secrets Manager - ${var.project_name}"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
+resource "aws_kms_alias" "secrets_key_alias" {
+  name          = "alias/${var.project_name}-secrets"
+  target_key_id = aws_kms_key.secrets_key.key_id
+}
 
 resource "aws_secretsmanager_secret" "db_credentials" {
   name                    = "rag/rds/credentials-v1"
   description             = "RAG DB Vector Credentials"
   recovery_window_in_days = 0
+  kms_key_id              = aws_kms_key.secrets_key.arn
 }
 
 resource "aws_secretsmanager_secret_version" "db_credentials_val" {
