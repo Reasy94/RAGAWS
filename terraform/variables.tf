@@ -20,3 +20,8 @@ variable "my_ip" {
   description = "My IP to access RDS"
   type        = string
 }
+
+variable "bastion_public_key" {
+  description = "Public SSH key for bastion host access"
+  type        = string
+}
