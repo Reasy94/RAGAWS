@@ -71,9 +71,7 @@ def seed():
                 status          TEXT DEFAULT 'processing'
             );
         """)
-        cur.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_fileingested_id_domain ON fileIngested(id_domain);
-        """)
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chunks (
                 file_hash   TEXT REFERENCES fileIngested(file_hash) ON DELETE CASCADE,
@@ -84,10 +82,6 @@ def seed():
                 embedding   vector(1024),
                 PRIMARY KEY (file_hash, page_number, chunk_id)
             );
-        """)
-        cur.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS chunks_embedding_hnsw_idx 
-            ON chunks USING hnsw (embedding vector_cosine_ops);
         """)
 
         cur.execute("""
@@ -100,10 +94,7 @@ def seed():
                 created_at TIMESTAMP DEFAULT NOW()
             );
         """)
-        cur.execute("""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS query_cache_embedding_hnsw_idx 
-            ON query_cache USING hnsw (query_embedding vector_cosine_ops);
-        """)
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS queries_history (
                 id SERIAL PRIMARY KEY,
@@ -118,6 +109,7 @@ def seed():
             );
         """)
 
+        # Seed domains
         print("Starting seeding process...")
         for item in domains_data:
             vector = get_embedding(item["desc"])
@@ -129,6 +121,31 @@ def seed():
             print(f"  ✓ Indexed domain: {item['name']}")
 
         conn.commit()
+        cur.close()
+
+        # ─── INDICI CONCURRENTLY (fuori transazione) ──────────────────────────
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("SET search_path TO rag;")
+
+        cur.execute("""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_fileingested_id_domain 
+            ON fileIngested(id_domain);
+        """)
+        print("  ✓ Index idx_fileingested_id_domain created")
+
+        cur.execute("""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS chunks_embedding_hnsw_idx 
+            ON chunks USING hnsw (embedding vector_cosine_ops);
+        """)
+        print("  ✓ Index chunks_embedding_hnsw_idx created")
+
+        cur.execute("""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS query_cache_embedding_hnsw_idx 
+            ON query_cache USING hnsw (query_embedding vector_cosine_ops);
+        """)
+        print("  ✓ Index query_cache_embedding_hnsw_idx created")
+
         cur.close()
         conn.close()
         print("Seeding completed successfully.")
