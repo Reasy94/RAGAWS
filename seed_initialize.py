@@ -108,6 +108,7 @@ def seed():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS queries_history (
                 id SERIAL PRIMARY KEY,
+                session_id TEXT,
                 original_query TEXT NOT NULL,
                 hypotethical_doc TEXT,
                 answer TEXT,

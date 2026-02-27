@@ -21,3 +21,5 @@ CACHE_SIMILARITY = 0.95
 CACHE_TTL_HOURS  = 24
 
 URL_FRONTEND = "https://main.d1eyk39qr1c4c2.amplifyapp.com/"
+
+LIMIT_QUERY_HISTORY = 3
