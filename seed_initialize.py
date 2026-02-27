@@ -71,7 +71,9 @@ def seed():
                 status          TEXT DEFAULT 'processing'
             );
         """)
-
+        cur.execute("""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_fileingested_id_domain ON fileIngested(id_domain);
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chunks (
                 file_hash   TEXT REFERENCES fileIngested(file_hash) ON DELETE CASCADE,
@@ -92,7 +94,7 @@ def seed():
             CREATE TABLE IF NOT EXISTS query_cache (
                 id SERIAL PRIMARY KEY,
                 query_text TEXT NOT NULL,
-                response TEXT,
+                answer TEXT,
                 sources JSONB,
                 query_embedding VECTOR(1024),
                 created_at TIMESTAMP DEFAULT NOW()
@@ -101,6 +103,19 @@ def seed():
         cur.execute("""
             CREATE INDEX CONCURRENTLY IF NOT EXISTS query_cache_embedding_hnsw_idx 
             ON query_cache USING hnsw (query_embedding vector_cosine_ops);
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS queries_history (
+                id SERIAL PRIMARY KEY,
+                original_query TEXT NOT NULL,
+                hypotethical_doc TEXT,
+                answer TEXT,
+                sources JSONB,
+                latency_ms INTEGER,
+                cache_hit BOOLEAN DEFAULT FALSE,
+                feedback BOOLEAN DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
         """)
 
         print("Starting seeding process...")

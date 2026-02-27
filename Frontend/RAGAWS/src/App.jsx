@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL || "https://your-api-gateway-url/query";
-const UPLOAD_LAMBDA_URL = import.meta.env.VITE_UPLOAD_URL || "https://your-api-gateway-url/upload";
+const API_URL = import.meta.env.VITE_API_URL
+const UPLOAD_LAMBDA_URL = import.meta.env.VITE_UPLOAD_URL
+
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap');
@@ -23,6 +24,8 @@ const styles = `
     --text-dim: rgba(240,238,255,0.25);
     --success: #22c55e;
     --error: #ef4444;
+    --feedback-color: #f59e0b;
+    --feedback-glow: rgba(245,158,11,0.12);
     --font-display: 'Syne', sans-serif;
     --font-mono: 'DM Mono', monospace;
   }
@@ -319,6 +322,59 @@ const styles = `
     font-size: 11px;
     font-family: var(--font-mono);
     color: var(--accent-bright);
+  }
+
+  /* ─── FEEDBACK ─── */
+  .feedback-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .feedback-label {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    margin-right: 4px;
+  }
+
+  .feedback-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+
+  .feedback-btn:hover:not(:disabled) {
+    border-color: var(--feedback-color);
+    color: var(--feedback-color);
+    background: var(--feedback-glow);
+    transform: scale(1.1);
+  }
+
+  .feedback-btn.voted {
+    border-color: var(--feedback-color);
+    color: var(--feedback-color);
+    background: var(--feedback-glow);
+    cursor: default;
+  }
+
+  .feedback-thanks {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--feedback-color);
+    animation: fadeIn 0.3s ease;
   }
 
   /* Typing indicator */
@@ -665,10 +721,59 @@ const XIcon = () => (
   </svg>
 );
 
+const ThumbUpIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+    <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+  </svg>
+);
+
+const ThumbDownIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+    <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+  </svg>
+);
+
 function formatBytes(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ─── FEEDBACK COMPONENT ───
+function FeedbackButtons({ messageId }) {
+  const [vote, setVote] = useState(null);
+
+  const handleVote = (type) => {
+    if (vote) return;
+    setVote(type);
+    console.log(`Feedback message ${messageId}: ${type}`);
+    // fetch('/feedback', { method: 'POST', body: JSON.stringify({ messageId, type }) })
+  };
+
+  return (
+    <div className="feedback-row">
+      <span className="feedback-label">Utile?</span>
+      <button
+        className={`feedback-btn ${vote === 'up' ? 'voted' : ''}`}
+        onClick={() => handleVote('up')}
+        disabled={!!vote}
+        title="Risposta utile"
+      >
+        <ThumbUpIcon />
+      </button>
+      <button
+        className={`feedback-btn ${vote === 'down' ? 'voted' : ''}`}
+        onClick={() => handleVote('down')}
+        disabled={!!vote}
+        title="Risposta non utile"
+      >
+        <ThumbDownIcon />
+      </button>
+      {vote && <span className="feedback-thanks">✓ Grazie!</span>}
+    </div>
+  );
 }
 
 // ─── CHAT PAGE ───
@@ -706,12 +811,14 @@ function ChatPage() {
       const data = await res.json();
       setMessages(prev => [...prev, {
         role: "assistant",
+        id: Date.now().toString(),
         content: data.answer || data.response || data.message || JSON.stringify(data),
         sources: data.sources || [],
       }]);
     } catch {
       setMessages(prev => [...prev, {
         role: "assistant",
+        id: Date.now().toString(),
         content: "Connection error. Please check your API configuration.",
         error: true,
       }]);
@@ -746,6 +853,9 @@ function ChatPage() {
                       <span key={j} className="source-tag">{s}</span>
                     ))}
                   </div>
+                )}
+                {msg.role === "assistant" && !msg.error && (
+                  <FeedbackButtons messageId={msg.id || i.toString()} />
                 )}
               </div>
             </div>
@@ -804,7 +914,6 @@ function UploadPage() {
     for (const item of pending) {
       setFiles(prev => prev.map(f => f.id === item.id ? { ...f, status: "uploading", progress: 0 } : f));
       try {
-        // Get presigned URL
         const res = await fetch(UPLOAD_LAMBDA_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -812,7 +921,6 @@ function UploadPage() {
         });
         const { upload_url } = await res.json();
 
-        // Upload to S3
         await fetch(upload_url, {
           method: "PUT",
           body: item.file,
