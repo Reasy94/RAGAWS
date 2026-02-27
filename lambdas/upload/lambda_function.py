@@ -4,6 +4,8 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+from shared.config import (URL_FRONTEND)
+
 s3_client = boto3.client("s3")
 BUCKET = os.environ["S3_BUCKET"]
 
@@ -62,7 +64,7 @@ def lambda_handler(event, context):
 def cors_headers():
     return {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": URL_FRONTEND,
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
     }
