@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import boto3
 import psycopg2
@@ -26,6 +27,20 @@ domains_data = [
 
 
 # ─── EMBEDDING ────────────────────────────────────────────────────────────────
+
+def get_embedding(text: str, input_type: str = "search_document") -> list[float]:
+    response = bedrock.invoke_model(
+        modelId     = COHERE_MODEL_ID,
+        contentType = "application/json",
+        accept      = "application/json",
+        body        = json.dumps({
+            "texts": [text],
+            "input_type": input_type
+        }),
+    )
+    body = json.loads(response["body"].read())
+    return body["embeddings"][0]
+
 
 def seed():
     conn = None
