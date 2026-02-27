@@ -3,8 +3,15 @@
 resource "aws_apigatewayv2_api" "rag_api" {
   name          = "${var.project_name}-api"
   protocol_type = "HTTP"
-}
 
+
+  cors_configuration {
+    allow_origins = ["*"]
+    allow_methods = ["POST", "OPTIONS"]
+    allow_headers = ["Content-Type"]
+    max_age       = 300
+  }
+}
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.rag_api.id
   name        = "$default"
@@ -56,19 +63,4 @@ resource "aws_lambda_permission" "apigw_upload" {
   function_name = aws_lambda_function.upload.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.rag_api.execution_arn}/*/*"
-}
-
-
-# ─── APIGATEWAY: CORS ABILITATION ────────────────────────────────────────────────────────
-
-resource "aws_apigatewayv2_api" "rag_api" {
-  name          = "${var.project_name}-api"
-  protocol_type = "HTTP"
-
-  cors_configuration {
-    allow_origins = ["*"]
-    allow_methods = ["POST", "OPTIONS"]
-    allow_headers = ["Content-Type"]
-    max_age       = 300
-  }
 }

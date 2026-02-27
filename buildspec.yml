@@ -26,7 +26,7 @@ phases:
       - echo "Step 2 - Building and uploading Lambda layer..."
       - cd ..
       - mkdir -p python
-      - pip install -r layers/dependencies/requirements.txt -t python/ --platform manylinux2014_x86_64 --only-binary=":all:"
+      - pip install -r dependencies/requirements.txt -t python/ --platform manylinux2014_x86_64 --only-binary=":all:"
       - zip -r9 dependencies.zip python
       - aws s3 cp dependencies.zip s3://${ARTIFACTS_BUCKET}/layers/dependencies.zip
       - rm -rf python dependencies.zip
