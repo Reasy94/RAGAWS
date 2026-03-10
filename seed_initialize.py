@@ -20,9 +20,18 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 domains_data = [
-    {"name": "aws_architecture",       "desc": "AWS whitepapers, cloud infrastructure, serverless, technical guides."},
-    {"name": "imf_economics",          "desc": "IMF Working Papers, energy economics, euro area, macroeconomic modeling, potential output."},
-    {"name": "world_bank_development", "desc": "World Bank reports, global development, poverty, sustainability, emerging markets."},
+    {
+        "name": "aws_architecture",
+        "desc": "AWS whitepapers, cloud infrastructure, serverless architecture, Lambda, EC2, S3, RDS, VPC, IAM, technical guides, well-architected framework, microservices, DevOps, CI/CD, Terraform, infrastructure as code, scalability, high availability, cost optimization, security best practices."
+    },
+    {
+        "name": "imf_economics",
+        "desc": "IMF Working Papers, International Monetary Fund, energy economics, euro area, macroeconomic modeling, potential output, fiscal policy, monetary policy, inflation, GDP growth, exchange rates, balance of payments, financial stability, sovereign debt, emerging market economies, economic forecasting, structural reforms."
+    },
+    {
+        "name": "world_bank_development",
+        "desc": "World Bank reports, global development, poverty reduction, sustainability, emerging markets, economic growth, GDP, developing countries, financial inclusion, infrastructure investment, climate finance, human capital, social protection, education, health systems, food security, private sector development, trade, urbanization, World Bank Group flagship report, global economic prospects."
+    },
 ]
 
 
@@ -128,7 +137,9 @@ def seed():
             cur.execute("""
                 INSERT INTO domains (domain_name, description, embedding_domain)
                 VALUES (%s, %s, %s)
-                ON CONFLICT (domain_name) DO NOTHING;
+                ON CONFLICT (domain_name) DO UPDATE SET
+                description = EXCLUDED.description,
+                embedding_domain = EXCLUDED.embedding_domain;
             """, (item["name"], item["desc"], vector))
             print(f"  ✓ Indexed domain: {item['name']}")
             logger.info(f"Indexed domain: {item['name']}")

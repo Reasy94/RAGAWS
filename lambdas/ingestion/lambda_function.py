@@ -174,6 +174,8 @@ def _analyze_document(fitz_doc: fitz.Document, plumber_pdf: pdfplumber.PDF) -> d
         logger.warning("Info Dictionary.Title vuoto — fallback al TOC")
         doc_name = next(iter(toc.values()), "Unknown Document")
 
+    offset = _calculate_page_offset(fitz_doc)
+
     logger.info(f"doc_name='{doc_name}' | toc_start={toc_start} | toc_entries={len(toc)}")
 
     return {
@@ -181,6 +183,7 @@ def _analyze_document(fitz_doc: fitz.Document, plumber_pdf: pdfplumber.PDF) -> d
         "total_pages": len(fitz_doc),
         "toc_start":   toc_start,
         "toc":         toc,
+        "offset":      offset,
     }
 
 
@@ -238,14 +241,15 @@ def _parse_toc(plumber_pdf: pdfplumber.PDF, toc_start_idx: int) -> dict:
     return toc
 
 
-def _get_section_for_page(page_num: int, toc: dict) -> str:
+def _get_section_for_page(page_num: int, toc: dict, offset: int) -> str:
     """
     Lookup O(1) della sezione per numero pagina.
     Ritorna il titolo dell'ultima sezione iniziata prima o alla pagina corrente.
     """
+    stamp = page_num - offset
     current_section = ""
     for p in sorted(toc.keys()):
-        if p <= page_num:
+        if p <= stamp:
             current_section = toc[p]
         else:
             break
@@ -258,10 +262,38 @@ def _build_context_header(doc_meta: dict, page_num: int) -> str:
     Formato: [doc_name | section]
     Fonte: Anthropic (2024) Contextual Retrieval — riduzione failure rate fino al 67%.
     """
-    section = _get_section_for_page(page_num, doc_meta["toc"])
+    section = _get_section_for_page(page_num, doc_meta["toc"], doc_meta["offset"])
     if section:
         return f"[{doc_meta['doc_name']} | {section}]"
     return f"[{doc_meta['doc_name']}]"
+
+def _calculate_page_offset(fitz_doc: fitz.Document) -> int:
+    """
+    Calcola offset tra numerazione fisica e stampata.
+    1. Prova get_page_labels() — ISO 32000-1:2008
+    2. Fallback: itera TOC fitz, cerca numero isolato su riga propria.
+    """
+    if fitz_doc.get_page_labels():
+        logger.info("Page labels nativi trovati — offset=0")
+        return 0
+
+    logger.warning("Page labels vuoti — calcolo offset da TOC")
+    for level, title, page_fisico in fitz_doc.get_toc():
+        page_idx = page_fisico - 1
+        if page_idx < 0 or page_idx >= len(fitz_doc):
+            continue
+        text = fitz_doc[page_idx].get_text()
+        for line in text.split("\n"):
+            line = line.strip()
+            if line.isdigit():
+                stampato = int(line)
+                offset = page_fisico - stampato
+                if offset > 0:
+                    logger.info(f"Page offset={offset} (fisico={page_fisico}, stampato={stampato})")
+                    return offset
+
+    logger.warning("Offset non calcolabile — ritorno 0")
+    return 0
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -420,8 +452,7 @@ def _build_and_embed_window(
     for idx, page_idx in enumerate(window_pages):
         page_num  = page_idx + 1
         page_info = window_infos[idx]
-        printed_page = int(fitz_doc[page_idx].get_label() or 0)
-        header    = _build_context_header(doc_meta, printed_page) 
+        header = _build_context_header(doc_meta, page_num)
 
         # ── Vision chunks ──────────────────────────────────────────────────
         if page_info["has_vector"]:
