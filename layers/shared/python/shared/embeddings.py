@@ -2,7 +2,7 @@ import json
 import boto3
 import logging
 
-from shared.config import TITAN_MODEL_ID, MAX_INPUT_CHARS, DOMAIN_SIMILARITY_THRESHOLD
+from shared.config import MAX_INPUT_CHARS, DOMAIN_SIMILARITY_THRESHOLD, COHERE_MODEL_ID
 from shared.db import get_conn, put_conn
 
 logger = logging.getLogger()
@@ -18,15 +18,18 @@ def _get_bedrock():
     return _bedrock
 
 
-def get_embedding(text: str) -> list[float]:
+def get_embedding(text: str, input_type: str = "search_document") -> list[float]:
     response = _get_bedrock().invoke_model(
-        modelId     = TITAN_MODEL_ID,
+        modelId     = COHERE_MODEL_ID,
         contentType = "application/json",
         accept      = "application/json",
-        body        = json.dumps({"inputText": text[:MAX_INPUT_CHARS]}),
+        body        = json.dumps({
+            "texts": [text],
+            "input_type": input_type
+        }),
     )
     body = json.loads(response["body"].read())
-    return body["embedding"]
+    return body["embeddings"][0]
 
 
 def _find_closest_domain(centroid: list[float]) -> int | None:
@@ -39,7 +42,7 @@ def _find_closest_domain(centroid: list[float]) -> int | None:
             FROM domains
             ORDER BY embedding_domain <=> %s::vector
             LIMIT 1
-        """, (centroid, centroid))
+        """, (centroid.tolist(), centroid.tolist()))
         row = cur.fetchone()
         if not row:
             return None

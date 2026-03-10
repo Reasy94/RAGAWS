@@ -4,16 +4,22 @@ IMAGE_MIN_SIZE    = 200
 DRAWING_THRESHOLD = 50
 MIN_TABLE_ROWS    = 2
 PAGE_FLUSH_SIZE   = 50
-MAX_INPUT_CHARS   = 8000
+MAX_INPUT_CHARS   = 2048
 
-TITAN_MODEL_ID  = "amazon.titan-embed-text-v2:0"
-HAIKU_MODEL_ID  = "anthropic.claude-3-haiku-20240307-v1:0"
-RERANK_MODEL_ID = "cohere.rerank-v3-5:0"
+TITAN_MODEL_ID  = "amazon.titan-embed-text-v2:0" #Not available in ap-southeast-1
+HAIKU_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0" #inference profile
+RERANK_MODEL_ID = "ap-northeast-1.cohere.rerank-v3-5:0"
+COHERE_MODEL_ID = "cohere.embed-multilingual-v3"
+
+MAX_VISION_WORKERS = 2
+MAX_VISION_RETRIES = 5
+MAX_VISION_BASE_DELAY = 2
+MAX_EMBEDDING_WORKERS = 5
 
 PAGE_WEIGHTS                = [0.5, 0.3, 0.2]
 TEXT_PAGES_NEEDED           = 3
 MIN_TEXT_LENGTH             = 100
-DOMAIN_SIMILARITY_THRESHOLD = 0.75
+DOMAIN_SIMILARITY_THRESHOLD = 0.5
 
 RETRIEVAL_TOP_K  = 20
 RERANK_TOP_N     = 5

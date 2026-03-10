@@ -14,13 +14,16 @@ _connection_pool = None
 def get_db_config() -> dict:
     global _db_config
     if _db_config:
+        logger.info("DB config already cached, reusing")
         return _db_config
 
-    secret_arn = os.environ.get("SECRET_ARN")
+    secret_arn = os.environ.get("DB_SECRET_ARN")
+    logger.info(f"Retrieving DB config from Secrets Manager: {secret_arn}")
     client     = boto3.client("secretsmanager")
     try:
         response = client.get_secret_value(SecretId=secret_arn)
         secret   = json.loads(response["SecretString"])
+        logger.info(f"DB config retrieved successfully, host: {secret['host']}")
         _db_config = {
             "host":     secret["host"],
             "database": secret["db_name"],
@@ -41,6 +44,7 @@ def get_pool() -> psycopg2.pool.SimpleConnectionPool:
         _connection_pool = psycopg2.pool.SimpleConnectionPool(
             minconn=1,
             maxconn=5,
+            options="-c search_path=rag",
             **config
         )
     return _connection_pool

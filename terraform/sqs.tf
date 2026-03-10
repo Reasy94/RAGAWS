@@ -1,6 +1,6 @@
 resource "aws_sqs_queue" "doc_processing_queue" {
   name                       = "${var.project_name}-doc-processing"
-  visibility_timeout_seconds = 360  # > Lambda timeout (300s)
+  visibility_timeout_seconds = 1200
   message_retention_seconds  = 86400
   receive_wait_time_seconds  = 10
 
@@ -12,5 +12,5 @@ resource "aws_sqs_queue" "doc_processing_queue" {
 
 resource "aws_sqs_queue" "doc_processing_dlq" {
   name                      = "${var.project_name}-doc-processing-dlq"
-  message_retention_seconds = 604800  # 7 days
+  message_retention_seconds = 604800
 }

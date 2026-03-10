@@ -16,7 +16,7 @@ resource "aws_lambda_layer_version" "shared" {
 resource "aws_lambda_layer_version" "dependencies" {
   layer_name          = "${var.project_name}-python-deps"
   s3_bucket           = aws_s3_bucket.rag_documents.id
-  s3_key              = "layers/dependencies.zip"
+  s3_key              = "layers/dependencies/dependencies.zip"
   compatible_runtimes = ["python3.12"]
   skip_destroy        = true
 }

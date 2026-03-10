@@ -30,6 +30,12 @@ resource "aws_iam_policy" "ingestion_policy" {
         Action   = ["s3:GetObject"]
         Resource = ["${aws_s3_bucket.rag_documents.arn}/*"]
       },
+	  {
+        Sid      = "S3ListBucket"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = ["${aws_s3_bucket.rag_documents.arn}"]
+      },
       {
         Sid      = "SecretsManagerRead"
         Effect   = "Allow"
@@ -37,9 +43,25 @@ resource "aws_iam_policy" "ingestion_policy" {
         Resource = [aws_secretsmanager_secret.db_credentials.arn]
       },
       {
+        Sid    = "MarketplaceSubscription"
+        Effect = "Allow"
+        Action = [
+          "aws-marketplace:Subscribe",
+          "aws-marketplace:Unsubscribe",
+          "aws-marketplace:ViewSubscriptions"
+        ]
+        Resource = ["*"]
+      },
+      {
+        Sid    = "KMSDecrypt"
+        Effect = "Allow"
+        Action = ["kms:Decrypt","kms:DescribeKey"]
+        Resource = [aws_kms_key.secrets_key.arn]
+      },
+      {
         Sid      = "BedrockInvoke"
         Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel"]
+        Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
         Resource = ["*"]
       }
     ]
@@ -56,6 +78,10 @@ resource "aws_iam_role_policy_attachment" "ingestion_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role_policy_attachment" "ingestion_vpc" {
+  role       = aws_iam_role.ingestion_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
 
 # ─── RETRIEVAL ROLE ───────────────────────────────────────────────────────────
 
