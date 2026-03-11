@@ -449,6 +449,7 @@ def _build_and_embed_window(
     Ritorna (chunks_con_embedding, last_caption_aggiornato)
     """
     raw_chunks = []
+    last_text_tail = None
 
     for idx, page_idx in enumerate(window_pages):
         page_num  = page_idx + 1
@@ -459,11 +460,16 @@ def _build_and_embed_window(
         if page_info["has_vector"]:
             caption = captions.get(page_num)
             if caption:
+                if last_text_tail:
+                    full_content = f"{header}\n[Contesto precedente: {last_text_tail}]\n\n{caption}"
+                    last_text_tail = None
+                else:
+                    full_content = f"{header}\n{caption}"
                 raw_chunks.append(_make_raw_chunk(
                     file_hash, page_num,
                     chunk_id   = 1,
                     chunk_type = "VECTOR_GRAPHIC",
-                    content    = f"{header}\n{caption}",
+                    content    = full_content,
                 ))
                 last_caption = caption
             continue
@@ -503,6 +509,8 @@ def _build_and_embed_window(
                 file_hash, len(table_chunks),
             )
             raw_chunks.extend(text_chunks)
+            if text_chunks:
+                last_text_tail = text_chunks[-1]["content"][-PRE_FIGURE_CONTEXT_CHARS:].strip()
 
     # 2c: embedding parallelo
     chunks_with_embeddings = _embed_chunks_parallel(raw_chunks)
