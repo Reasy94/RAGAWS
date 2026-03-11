@@ -1,10 +1,11 @@
-CHUNK_SIZE        = 500
-CHUNK_OVERLAP     = int(CHUNK_SIZE * 0.10)
+CHUNK_SIZE        = 800
+CHUNK_OVERLAP     = int(CHUNK_SIZE * 0.15)
 IMAGE_MIN_SIZE    = 200
-DRAWING_THRESHOLD = 50
+DRAWING_THRESHOLD = 15
 MIN_TABLE_ROWS    = 2
 PAGE_FLUSH_SIZE   = 50
 MAX_INPUT_CHARS   = 2048
+PRE_FIGURE_CONTEXT_CHARS = 300
 
 TITAN_MODEL_ID  = "amazon.titan-embed-text-v2:0" #Not available in ap-southeast-1
 HAIKU_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0" #inference profile

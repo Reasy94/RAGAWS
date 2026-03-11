@@ -18,6 +18,7 @@ from shared.config import (
     MIN_TABLE_ROWS, PAGE_FLUSH_SIZE, MAX_INPUT_CHARS, HAIKU_MODEL_ID,
     PAGE_WEIGHTS, TEXT_PAGES_NEEDED, MIN_TEXT_LENGTH,
     MAX_EMBEDDING_WORKERS, MAX_VISION_RETRIES, MAX_VISION_BASE_DELAY,
+    PRE_FIGURE_CONTEXT_CHARS,
 )
 from shared.db import get_conn, put_conn
 from shared.embeddings import get_embedding, _find_closest_domain
