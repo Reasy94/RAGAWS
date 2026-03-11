@@ -23,6 +23,15 @@ from shared.config import (
 from shared.db import get_conn, put_conn
 from shared.embeddings import get_embedding, _find_closest_domain
 
+_EXCLUDE_SECTION_TYPES = re.compile(
+    r'^(text tables?|list of tables?|appendix|appendixes|cover|contents|preface|'
+    r'figure|fig\.|table|tbl\.|annex|annexes|box|boxes|references|bibliography|'
+    r'selected topics|statistical appendix|abbreviations|acknowledgments?|foreword|'
+    r'glossary|data and conventions|assumptions and conventions|further information|'
+    r'country abbreviations|heading)\b',
+    re.IGNORECASE
+)
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -168,21 +177,19 @@ def _analyze_document(fitz_doc: fitz.Document, plumber_pdf: pdfplumber.PDF) -> d
     Eseguito una volta sola per documento.
     """
     doc_name  = _extract_doc_name(fitz_doc)
-    toc_start = _find_toc_start(plumber_pdf)
-    toc       = _parse_toc(plumber_pdf, toc_start) if toc_start is not None else {}
+    toc, toc_strategy = _build_hierarchical_toc(fitz_doc, plumber_pdf)
 
     if not doc_name:
-        logger.warning("Info Dictionary.Title vuoto — fallback al TOC")
-        doc_name = next(iter(toc.values()), "Unknown Document")
+        logger.warning("Info Dictionary.Title empty — TOC fallback")
+        first = next(iter(toc.values()), None)
+        doc_name = first["title"] if first else "Unknown Document"
 
     offset = _calculate_page_offset(fitz_doc)
-
-    logger.info(f"doc_name='{doc_name}' | toc_start={toc_start} | toc_entries={len(toc)}")
+    logger.info(f"doc_name='{doc_name}' | strategy={toc_strategy} | toc_entries={len(toc)}")
 
     return {
         "doc_name":    doc_name,
         "total_pages": len(fitz_doc),
-        "toc_start":   toc_start,
         "toc":         toc,
         "offset":      offset,
     }
@@ -197,64 +204,137 @@ def _extract_doc_name(fitz_doc: fitz.Document) -> str:
     title    = metadata.get("title") or metadata.get("Title") or ""
     return title.strip()
 
+def _build_hierarchical_toc(fitz_doc: fitz.Document, plumber_pdf: pdfplumber.PDF) -> tuple[dict, str]:
+    """
+    Strategia adattiva a 3 livelli:
+    1. fitz bookmark tree nativo con livelli multipli (ISO 32000-1:2008)
+    2. pdfplumber x0 clustering su TOC testuale (Déjean & Meunier, 2005)
+    3. fitz flat fallback
+    """
+    if _fitz_has_multiple_levels(fitz_doc):
+        return _build_toc_from_fitz(fitz_doc), "fitz_multilevel"
+
+    toc_start = _find_toc_start(plumber_pdf)
+    if toc_start is not None:
+        toc = _build_toc_from_plumber(plumber_pdf, toc_start)
+        if toc:
+            return toc, "pdfplumber_x0"
+
+    # Flat fallback
+    raw = fitz_doc.get_toc()
+    toc = {}
+    for _, title, page in raw:
+        if not _EXCLUDE_SECTION_TYPES.match(title.strip()):
+            toc[page] = {"title": title.strip(), "parent": None}
+    return toc, "fitz_flat_fallback"
+
+
+def _fitz_has_multiple_levels(fitz_doc: fitz.Document) -> bool:
+    raw      = fitz_doc.get_toc()
+    filtered = [(l, t, p) for l, t, p in raw if not _EXCLUDE_SECTION_TYPES.match(t.strip())]
+    levels   = set(l for l, _, _ in filtered)
+    return len(levels) > 1
+
+
+def _build_toc_from_fitz(fitz_doc: fitz.Document) -> dict:
+    raw      = fitz_doc.get_toc()
+    filtered = [(l, t, p) for l, t, p in raw if not _EXCLUDE_SECTION_TYPES.match(t.strip())]
+    toc          = {}
+    parent_stack = {}
+    for level, title, page in filtered:
+        parent = parent_stack.get(level - 1)
+        parent_stack[level] = title
+        for l in list(parent_stack.keys()):
+            if l > level:
+                del parent_stack[l]
+        toc[page] = {"title": title.strip(), "parent": parent}
+    return toc
+
 
 def _find_toc_start(plumber_pdf: pdfplumber.PDF) -> int | None:
-    """
-    Trova la pagina dell'indice cercando il textual anchor 'Contents'.
-    Fonte: Déjean & Meunier (2005) — textual anchors come marker strutturali affidabili.
-    """
+    """Déjean & Meunier (2005) — textual anchor 'Contents'."""
     for i in range(min(20, len(plumber_pdf.pages))):
         text  = plumber_pdf.pages[i].extract_text() or ""
         lines = [l.strip() for l in text.split("\n") if l.strip()]
         for line in lines:
             if line.lower() in ("contents", "table of contents"):
-                logger.info(f"TOC anchor 'Contents' found at page {i+1}")
+                logger.info(f"TOC anchor found at page {i+1}")
                 return i
-    logger.warning("TOC anchor not found in first 20 pages")
+    logger.warning("TOC anchor not found")
     return None
 
 
-def _parse_toc(plumber_pdf: pdfplumber.PDF, toc_start_idx: int) -> dict:
-    """
-    Parsa il TOC usando il pattern leader dots (...)  come separatore titolo/pagina.
-    Pattern: "Latin America and the Caribbean ... 69"
-    Fonte: Déjean & Meunier (2005) — pattern-based TOC extraction.
-    """
-    EXCLUDE_TOC_PREFIXES = re.compile(
-    r'^(\d+\.\d+|B\d+\.\d+|A\d+\.\d+)',
-    re.IGNORECASE
-    )
-    toc = {}
-    for i in range(toc_start_idx, min(toc_start_idx + 5, len(plumber_pdf.pages))):
-        text  = plumber_pdf.pages[i].extract_text() or ""
-        lines = [l.strip() for l in text.split("\n") if l.strip()]
-        for line in lines:
-            if line.lower() in ("contents", "table of contents"):
+def _build_toc_from_plumber(plumber_pdf: pdfplumber.PDF, toc_start_idx: int) -> dict:
+    """x0 clustering per inferire gerarchia da indentazione TOC testuale."""
+    EXCLUDE_PREFIXES = re.compile(r'^(\d+\.\d+|B\d+\.\d+|A\d+\.\d+)', re.IGNORECASE)
+    X0_CLUSTER_TOLERANCE = 8
+    TOC_SEARCH_PAGES     = 5
+
+    entries = []
+    for i in range(toc_start_idx, min(toc_start_idx + TOC_SEARCH_PAGES, len(plumber_pdf.pages))):
+        words        = plumber_pdf.pages[i].extract_words()
+        lines_by_top = {}
+        for w in words:
+            lines_by_top.setdefault(round(w["top"]), []).append(w)
+        for top, ws in sorted(lines_by_top.items()):
+            line_text = " ".join(w["text"] for w in ws).strip()
+            x0        = min(w["x0"] for w in ws)
+            if line_text.lower() in ("contents", "table of contents"):
                 continue
-            match = re.match(r'^(.+?)\s*\.{2,}\s*(\d+)\s*$', line)
-            if match:
-                title    = match.group(1).strip()
-                page_num = int(match.group(2))
-                if EXCLUDE_TOC_PREFIXES.match(title):
-                    continue
-                if len(title) > 5 and not title.isdigit():
-                    toc[page_num] = title
+            if _EXCLUDE_SECTION_TYPES.match(line_text):
+                continue
+            match = re.match(r'^(.+?)\s*\.{2,}\s*(\d+)\s*$', line_text)
+            if not match:
+                continue
+            title    = match.group(1).strip()
+            page_num = int(match.group(2))
+            if EXCLUDE_PREFIXES.match(title):
+                continue
+            if len(title) > 5 and not title.isdigit():
+                entries.append({"title": title, "page_num": page_num, "x0": x0})
+
+    if not entries:
+        return {}
+
+    x0_vals  = sorted(set(round(e["x0"]) for e in entries))
+    clusters = []
+    for x in x0_vals:
+        if not clusters or x - clusters[-1] > X0_CLUSTER_TOLERANCE:
+            clusters.append(x)
+
+    def get_level(x0):
+        for i, threshold in enumerate(clusters):
+            if round(x0) <= threshold + X0_CLUSTER_TOLERANCE:
+                return i
+        return len(clusters) - 1
+
+    toc          = {}
+    parent_stack = {}
+    for entry in entries:
+        level  = get_level(entry["x0"])
+        parent = parent_stack.get(level - 1)
+        parent_stack[level] = entry["title"]
+        for l in list(parent_stack.keys()):
+            if l > level:
+                del parent_stack[l]
+        toc[entry["page_num"]] = {"title": entry["title"], "parent": parent}
     return toc
 
-
 def _get_section_for_page(page_num: int, toc: dict, offset: int) -> str:
-    """
-    Lookup O(1) della sezione per numero pagina.
-    Ritorna il titolo dell'ultima sezione iniziata prima o alla pagina corrente.
-    """
     stamp = page_num - offset
-    current_section = ""
+    current_section = None
     for p in sorted(toc.keys()):
         if p <= stamp:
             current_section = toc[p]
         else:
             break
-    return current_section
+    if not current_section:
+        return ""
+    parts = []
+    if current_section["parent"]:
+        parts.append(current_section["parent"])
+    parts.append(current_section["title"])
+    return " | ".join(parts[-2:])
 
 
 def _build_context_header(doc_meta: dict, page_num: int) -> str:
