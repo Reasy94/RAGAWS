@@ -430,7 +430,7 @@ function ChatPage() {
           <div className="empty">
             <div className="empty-mark">⊗</div>
             <div className="empty-title">Ready for queries</div>
-            <div className="empty-sub">World Bank · IMF · Economic Research</div>
+            <div className="empty-sub">Ask anything about your documents</div>
           </div>
         ) : (
           messages.map((msg, i) => (
