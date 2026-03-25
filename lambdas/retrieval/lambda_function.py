@@ -1,44 +1,58 @@
-import boto3
-import logging
 import json
+import logging
+import numpy as np
+import boto3
+import time
 
+from rank_bm25 import BM25Okapi
 from shared.config import (
-    HAIKU_MODEL_ID, RERANK_MODEL_ID,
-    RETRIEVAL_TOP_K, RERANK_TOP_N, CACHE_SIMILARITY, CACHE_TTL_HOURS,LIMIT_QUERY_HISTORY
+    NOVA_PRO_MODEL_ID,
+    RETRIEVAL_TOP_K,
+    CACHE_SIMILARITY,
+    CACHE_TTL_HOURS,
 )
 from shared.db import get_conn, put_conn
 from shared.embeddings import get_embedding, _find_closest_domain
 
-# --- Logger Setup ---
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 bedrock = boto3.client("bedrock-runtime")
 
+# ── In-memory warm cache (reused across hot Lambda instances) ─────────────────
+_domain_chunks_cache: dict[int, list[dict]] = {}
+_domain_bm25_cache:   dict[int, BM25Okapi]  = {}
 
-# ─── SEMANTIC CACHE ───────────────────────────────────────────────────────────
+VECTOR_BROAD_K = 20
+BM25_BROAD_K   = 20
+RRF_K          = 60
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SEMANTIC CACHE
+# ══════════════════════════════════════════════════════════════════════════════
 
 def check_cache(query_embedding: list[float]) -> dict | None:
     conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT query_text, response, sources,
+            SELECT answer, sources,
                    1 - (query_embedding <=> %s::vector) AS similarity
-            FROM query_cache
+            FROM rag.query_cache
             WHERE created_at > NOW() - INTERVAL '%s hours'
             ORDER BY query_embedding <=> %s::vector
             LIMIT 1
         """, (query_embedding, CACHE_TTL_HOURS, query_embedding))
         row = cur.fetchone()
-        if row and row[3] >= CACHE_SIMILARITY:
-            logger.info(f"Cache HIT (similarity: {row[3]:.3f})")
+        if row and row[2] >= CACHE_SIMILARITY:
+            logger.info(f"Cache HIT (similarity: {row[2]:.3f})")
             return {
-                "response": row[1],
-                "sources":  json.loads(row[2]) if isinstance(row[2], str) else row[2],
+                "response": row[0],
+                "sources":  json.loads(row[1]) if isinstance(row[1], str) else row[1],
                 "cached":   True,
             }
-        logger.info("Cache MISS")
+        logger.info("Cache query MISS")
         return None
     except Exception as e:
         logger.warning(f"Cache check failed: {e}")
@@ -47,7 +61,12 @@ def check_cache(query_embedding: list[float]) -> dict | None:
         put_conn(conn)
 
 
-def store_cache(query_text: str, query_embedding: list[float], response: str, sources: list[dict]):
+def store_cache(
+    query_text:      str,
+    query_embedding: list[float],
+    response:        str,
+    sources:         list[dict],
+) -> None:
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -63,252 +82,453 @@ def store_cache(query_text: str, query_embedding: list[float], response: str, so
         conn.commit()
         logger.info("Cache stored successfully")
     except Exception as e:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         logger.warning(f"Cache store failed: {e}")
     finally:
         put_conn(conn)
 
-# ─── HyDE ─────────────────────────────────────────────────────────────────────
 
-def get_style_chunks_by_domain(domain_id: int, limit: int = 3) -> list[str]:
+# ══════════════════════════════════════════════════════════════════════════════
+# DOMAIN CHUNK LOADING
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _load_domain_chunks(domain_id: int) -> tuple[list[dict], BM25Okapi | None]:
+    if domain_id in _domain_chunks_cache:
+        logger.info(f"Domain {domain_id}: served from warm cache")
+        return _domain_chunks_cache[domain_id], _domain_bm25_cache[domain_id]
+
+    logger.info(f"Domain {domain_id}: loading from RDS...")
     conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT c.content 
-            FROM chunks c
-            JOIN fileIngested f ON c.file_hash = f.file_hash
-            WHERE f.id_domain = %s
-            ORDER BY RANDOM() 
-            LIMIT %s
-        """, (domain_id, limit))
-        
-        rows = cur.fetchall()
-        return [row[0] for row in rows]
-    except Exception as e:
-        logger.error(f"Error fetching style chunks: {e}")
-        return []
-    finally:
-        put_conn(conn)
+            SELECT c.file_hash, c.page_number, c.chunk_id, c.chunk_type,
+                   c.content, c.embedding, f.file_name
+            FROM rag.chunks c
+            JOIN rag.fileIngested f ON c.file_hash = f.file_hash
+            WHERE f.id_domain = %s AND f.status = 'completed'
+            ORDER BY c.file_hash, c.page_number, c.chunk_id
+        """, (domain_id,))
 
-
-def generate_hypothetical_document(query: str, style_chunks: list[str]) -> str:
-    examples_text = "\n\n".join([f"EXAMPLE {i+1}:\n{chunk}" for i, chunk in enumerate(style_chunks)])
-
-    prompt_content = (
-        "You are an expert technical writer. Below are examples of the writing style, "
-        "terminology, and structure used in our database documents.\n\n"
-        f"=== STYLE EXAMPLES ===\n{examples_text}\n\n"
-        "=== TASK ===\n"
-        "Write a brief paragraph (max 200 words) that answers the following question. "
-        "You must strictly mimic the style, professional tone, and specific vocabulary "
-        "shown in the examples above. Do not include any preambles; write the answer directly.\n\n"
-        f"Question: {query}"
-    )
-    body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens":        300,
-        "messages": [{
-            "role": "user",
-            "content": prompt_content
-        }],
-        "temperature" : 0.5
-    })
-
-    response = bedrock.invoke_model(
-        modelId     = HAIKU_MODEL_ID,
-        contentType = "application/json",
-        accept      = "application/json",
-        body        = body,
-    )
-    result = json.loads(response["body"].read())
-    hypothetical_doc = result["content"][0]["text"].strip()
-    logger.info(f"HyDE generated ({len(hypothetical_doc)} chars)")
-    return hypothetical_doc
-
-
-# ─── VECTOR SEARCH ────────────────────────────────────────────────────────────
-
-def vector_search(query_embedding: list[float], top_k: int = RETRIEVAL_TOP_K) -> list[dict]:
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT c.file_hash, c.page_number, c.chunk_id, c.chunk_type, c.content,
-                   f.file_name, f.id_domain,
-                   1 - (c.embedding <=> %s::vector) AS similarity
-            FROM chunks c
-            JOIN fileIngested f ON c.file_hash = f.file_hash
-            WHERE f.status = 'completed'
-            ORDER BY c.embedding <=> %s::vector
-            LIMIT %s
-        """, (query_embedding, query_embedding, top_k))
-
-        results = []
+        chunks = []
         for row in cur.fetchall():
-            results.append({
+            emb = row[5]
+            if isinstance(emb, str):
+                emb = json.loads(emb.replace("'", '"'))
+            chunks.append({
                 "file_hash":   row[0],
                 "page_number": row[1],
                 "chunk_id":    row[2],
                 "chunk_type":  row[3],
                 "content":     row[4],
-                "file_name":   row[5],
-                "id_domain":   row[6],
-                "similarity":  row[7],
+                "embedding":   np.array(emb, dtype=np.float32),
+                "file_name":   row[6],
+                "id_domain":   domain_id,
             })
-        logger.info(f"Vector search returned {len(results)} chunks")
-        return results
+        if not chunks:
+            logger.warning(f"Domain {domain_id}: no chunks found")
+            return [], None
+
+        tokenized = [c["content"].lower().split() for c in chunks]
+        bm25      = BM25Okapi(tokenized)
+
+        _domain_chunks_cache[domain_id] = chunks
+        _domain_bm25_cache[domain_id]   = bm25
+
+        logger.info(f"Domain {domain_id}: loaded {len(chunks)} chunks")
+        return chunks, bm25
+
     finally:
         put_conn(conn)
 
 
-# ─── RERANKER ─────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# V3 RETRIEVAL — BM25 + Vector → RRF
+# ══════════════════════════════════════════════════════════════════════════════
 
-def rerank(query: str, chunks: list[dict], top_n: int = RERANK_TOP_N) -> list[dict]:
-    if not chunks:
-        return []
+def _vector_search(
+    query_embedding: np.ndarray,
+    chunks:          list[dict],
+    top_k:           int,
+) -> list[dict]:
+    scores = [
+        (
+            np.dot(query_embedding, c["embedding"]) / (
+                np.linalg.norm(query_embedding) * np.linalg.norm(c["embedding"]) + 1e-9
+            ),
+            c,
+        )
+        for c in chunks
+    ]
+    scores.sort(key=lambda x: x[0], reverse=True)
+    return [c for _, c in scores[:top_k]]
 
-    documents = [c["content"] for c in chunks]
 
-    body = json.dumps({
-        "query":       query,
-        "documents":   documents,
-        "top_n":       top_n,
-        "api_version": 2,
-    })
+def _bm25_search(
+    query:  str,
+    chunks: list[dict],
+    bm25:   BM25Okapi,
+    top_k:  int,
+) -> list[dict]:
+    scores      = bm25.get_scores(query.lower().split())
+    top_indices = np.argsort(scores)[::-1][:top_k]
+    return [chunks[i] for i in top_indices if scores[i] > 0]
 
-    response = bedrock.invoke_model(
-        modelId     = RERANK_MODEL_ID,
-        contentType = "application/json",
-        accept      = "application/json",
-        body        = body,
+
+def _rrf(results_list: list[list[dict]]) -> list[dict]:
+    scores    = {}
+    chunk_map = {}
+    for results in results_list:
+        for rank, chunk in enumerate(results):
+            key            = (chunk["file_hash"], chunk["page_number"], chunk["chunk_id"])
+            scores[key]    = scores.get(key, 0) + 1.0 / (RRF_K + rank + 1)
+            chunk_map[key] = chunk
+    sorted_keys = sorted(scores, key=lambda x: scores[x], reverse=True)
+    return [chunk_map[key] for key in sorted_keys]
+
+
+def _retrieve_v3(
+    query:           str,
+    query_embedding: np.ndarray,
+    chunks:          list[dict],
+    bm25:            BM25Okapi,
+) -> list[dict]:
+    vec_results  = _vector_search(query_embedding, chunks, top_k=VECTOR_BROAD_K)
+    bm25_results = _bm25_search(query, chunks, bm25, top_k=BM25_BROAD_K)
+    fused        = _rrf([vec_results, bm25_results])[:RETRIEVAL_TOP_K]
+    logger.info(f"V3 RRF returned {len(fused)} chunks")
+    return fused
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GENERATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _generate_response(query: str, chunks: list[dict], window_context: str = "") -> str:
+    context = "\n\n---\n\n".join(
+        f"[Source {i}: {c['file_name']}, page {c['page_number']}]\n{c['content']}"
+        for i, c in enumerate(chunks, 1)
     )
-    result = json.loads(response["body"].read())
-
-    reranked = []
-    for item in result["results"]:
-        idx   = item["index"]
-        score = item["relevance_score"]
-        chunk = chunks[idx].copy()
-        chunk["rerank_score"] = score
-        reranked.append(chunk)
-
-    reranked.sort(key=lambda x: x["rerank_score"], reverse=True)
-    logger.info(f"Reranked to top {len(reranked)} chunks. "
-                f"Scores: {[round(c['rerank_score'], 3) for c in reranked]}")
-    return reranked
-
-
-# ─── GENERATION ───────────────────────────────────────────────────────────────
-
-def generate_response(query: str, chunks: list[dict]) -> str:
-    if not chunks:
-        return "I could not find sufficient information to answer the question."
-
-    context_parts = []
-    for i, chunk in enumerate(chunks, 1):
-        source_info = f"[Source {i}: {chunk['file_name']}, page {chunk['page_number']}]"
-        context_parts.append(f"{source_info}\n{chunk['content']}")
-
-    context = "\n\n---\n\n".join(context_parts)
+    conversation_block = (f"\n\n---\n\n{window_context}" if window_context else "")
 
     body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens":        1024,
-        "system": (
-            "You are an expert assistant. Your answers must be grounded strictly and exclusively in the "
-            "provided context. If the context lacks sufficient information to answer the question, "
-            "explicitly state that you cannot find the answer. "
-            "Always cite your sources using the format [Source N] for any specific information referenced."
-        ),
         "messages": [{
             "role": "user",
-            "content": (
-                f"Context:\n\n{context}\n\n"
-                f"---\n\Question: {query}\n\n"
-                "Answer clearly and in detail, relying strictly on the provided context only."
-            )
+            "content": [{
+                "text": (
+                    f"Context:\n\n{context}"
+                    f"{conversation_block}\n\n"
+                    f"---\nQuestion: {query}\n\n"
+                    "Answer clearly and in detail, relying strictly on the provided context only."
+                )
+            }]
         }],
+        "inferenceConfig": {"max_new_tokens": 1024},
     })
 
     response = bedrock.invoke_model(
-        modelId     = HAIKU_MODEL_ID,
+        modelId     = NOVA_PRO_MODEL_ID,
         contentType = "application/json",
         accept      = "application/json",
         body        = body,
     )
-    result = json.loads(response["body"].read())
-    return result["content"][0]["text"].strip()
+    raw = json.loads(response["body"].read())
+    return raw["output"]["message"]["content"][0]["text"].strip()
 
 
-# ─── ENTRY POINT ──────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# FEEDBACK
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _handle_feedback(event) -> dict:
+    try:
+        body = json.loads(event["body"]) if isinstance(event.get("body"), str) else event.get("body", {})
+        query_id   = body.get("query_id")
+        feedback   = body.get("feedback")  # True = thumbs up, False = thumbs down
+
+        if query_id is None or feedback is None:
+            return _api_response(400, {"error": "Missing query_id or feedback"})
+
+        conn = get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE rag.queries_history
+                SET feedback = %s
+                WHERE id = %s
+            """, (feedback, query_id))
+            conn.commit()
+            logger.info(f"Feedback saved: query_id={query_id} feedback={feedback}")
+            return _api_response(200, {"status": "ok"})
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Feedback DB error: {e}")
+            return _api_response(500, {"error": "Internal server error"})
+        finally:
+            put_conn(conn)
+
+    except Exception as e:
+        logger.error(f"Feedback handler error: {e}")
+        return _api_response(500, {"error": "Internal server error"})
+
+# ══════════════════════════════════════════════════════════════════════════════
+# QUERY HISTORY
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _store_query_history(
+    session_id: str | None,
+    query:      str,
+    answer:     str,
+    sources:    list[dict],
+    latency_ms: int,
+    cache_hit:  bool,
+) -> int | None:
+    """Salva la query nella history e ritorna l'id generato."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO rag.queries_history
+                (session_id, query, answer, sources, latency_ms, cache_hit)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (session_id, query, answer, json.dumps(sources), latency_ms, cache_hit))
+        row = cur.fetchone()
+        conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"Failed to store query history: {e}")
+        return None
+    finally:
+        put_conn(conn)
+
+
+def _load_session_history(session_id: str) -> list[dict]:
+    """Carica la history della sessione ordinata per created_at."""
+    if not session_id:
+        return []
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT query, answer
+            FROM rag.queries_history
+            WHERE session_id = %s
+            ORDER BY created_at ASC
+        """, (session_id,))
+        return [{"query": row[0], "answer": row[1]} for row in cur.fetchall()]
+    except Exception as e:
+        logger.warning(f"Failed to load session history: {e}")
+        return []
+    finally:
+        put_conn(conn)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WINDOW MEMORY
+# ══════════════════════════════════════════════════════════════════════════════
+
+WINDOW_SIZE = 3
+
+
+def _summarize_history(history: list[dict]) -> str:
+    """Riassume la history con Nova Pro."""
+    conversation = "\n\n".join(
+        f"User: {h['query']}\nAssistant: {h['answer']}"
+        for h in history
+    )
+    body = json.dumps({
+        "messages": [
+            {
+                "role": "user",
+                "content": [{
+                    "text": (
+                        "Summarize the following conversation in a concise paragraph "
+                        "that captures the key topics discussed and information exchanged. "
+                        "This summary will be used as context for future questions.\n\n"
+                        f"{conversation}"
+                    )
+                }]
+            }
+        ],
+        "inferenceConfig": {"max_new_tokens": 300},
+    })
+    try:
+        response = bedrock.invoke_model(
+            modelId     = NOVA_PRO_MODEL_ID,
+            contentType = "application/json",
+            accept      = "application/json",
+            body        = body,
+        )
+        raw = json.loads(response["body"].read())
+        return raw["output"]["message"]["content"][0]["text"].strip()
+    except Exception as e:
+        logger.warning(f"Summarization failed: {e}")
+        return ""
+
+
+def _build_window_context(history: list[dict]) -> str:
+    """
+    Costruisce il contesto della memoria a window.
+
+    Schema:
+      len <= WINDOW_SIZE     → history plain
+      len == WINDOW_SIZE+1   → summary(primi 3) + ultimo
+      len == WINDOW_SIZE+2   → summary(primi 3) + ultimi 2
+      len == WINDOW_SIZE+3   → summary(primi 3) + ultimi 3
+      len == WINDOW_SIZE*2+1 → summary(summary+3) + ultimo  (nuovo ciclo)
+    """
+    if not history:
+        return ""
+
+    n = len(history)
+
+    if n <= WINDOW_SIZE:
+        # History plain — nessun summary
+        parts = [
+            f"User: {h['query']}\nAssistant: {h['answer']}"
+            for h in history
+        ]
+        return "Previous conversation:\n\n" + "\n\n".join(parts)
+
+    # Calcola quanti blocchi di WINDOW_SIZE sono stati summarizzati
+    summarized_count = (n // WINDOW_SIZE) * WINDOW_SIZE - WINDOW_SIZE
+    recent           = history[summarized_count:]
+
+    # Se siamo all'inizio di un nuovo blocco, summarizza il blocco precedente
+    if len(recent) > WINDOW_SIZE:
+        to_summarize = history[:summarized_count + WINDOW_SIZE]
+        summary      = _summarize_history(to_summarize)
+        recent       = history[summarized_count + WINDOW_SIZE:]
+    else:
+        summary = _summarize_history(history[:summarized_count + WINDOW_SIZE - len(recent)])
+
+    parts = [f"User: {h['query']}\nAssistant: {h['answer']}" for h in recent]
+    recent_text = "\n\n".join(parts)
+
+    return (
+        f"Summary of previous conversation:\n{summary}\n\n"
+        f"Recent conversation:\n\n{recent_text}"
+    )
+# ══════════════════════════════════════════════════════════════════════════════
+# ENTRY POINT
+# ══════════════════════════════════════════════════════════════════════════════
 
 def lambda_handler(event, context):
+    path = event.get("rawPath", "")
+    if path == "/feedback":
+        return _handle_feedback(event)
     try:
-        if isinstance(event.get("body"), str):
-            body = json.loads(event["body"])
+        raw_body = event.get("body")
+        if raw_body is None:
+            body = event
+        elif isinstance(raw_body, str):
+            body = json.loads(raw_body)
         else:
-            body = event.get("body", event)
+            body = raw_body
 
         query = body.get("query", "").strip()
+        session_id = body.get("session_id")
+        
         if not query:
             return _api_response(400, {"error": "Missing 'query' parameter"})
 
-        logger.info(f"Query received: {query[:100]}...")
+        logger.info(f"Query: {query[:100]}... | session_id: {session_id}")
+        start_time = time.time()
 
-        # Step 1: Embed original query
+        # Step 1 — Embed query
         query_embedding = get_embedding(query)
 
-        # Step 2: Check semantic cache
+        # Step 2 — Semantic cache check
         cached = check_cache(query_embedding)
         if cached:
+            _store_query_history(
+                session_id = session_id,
+                query      = query,
+                answer     = cached["response"],
+                sources    = cached["sources"],
+                latency_ms = int((time.time() - start_time) * 1000),
+                cache_hit  = True,
+            )
             return _api_response(200, cached)
 
-        # Step 3: HyDE
+        # Step 3 — Domain detection
         domain_id = _find_closest_domain(query_embedding)
         if domain_id is None:
-            logger.info("Query rejected: does not match any known domain.")
             return _api_response(200, {
                 "response": "The question does not appear to be relevant to the available documentation.",
-                "sources": [],
-                "cached": False
-        })
-        style_chunks = get_style_chunks_by_domain(domain_id)
-        hypothetical_doc = generate_hypothetical_document(query, style_chunks)
-        hyde_embedding   = get_embedding(hypothetical_doc)
+                "sources":  [],
+                "cached":   False,
+            })
 
-        # Step 4: Vector search with HyDE embedding
-        candidates = vector_search(hyde_embedding, top_k=RETRIEVAL_TOP_K)
-
-        if not candidates:
+        # Step 4 — Load domain chunks (warm cache on hot instances)
+        chunks, bm25 = _load_domain_chunks(domain_id)
+        if not chunks:
             return _api_response(200, {
                 "response": "I could not find any relevant documents to answer the question.",
                 "sources":  [],
                 "cached":   False,
             })
 
-        # Step 5: Rerank with original query
-        top_chunks = rerank(query, candidates, top_n=RERANK_TOP_N)
+        # Step 5 — V3: BM25 + Vector → RRF
+        top_chunks = _retrieve_v3(
+            query,
+            np.array(query_embedding, dtype=np.float32),
+            chunks,
+            bm25,
+        )
 
-        # Step 6: Generate response
-        response_text = generate_response(query, top_chunks)
+        if not top_chunks:
+            return _api_response(200, {
+                "response": "I could not find any relevant documents to answer the question.",
+                "sources":  [],
+                "cached":   False,
+            })
 
-        # Step 7: Build sources
-        sources = [{
-            "file_name":    c["file_name"],
-            "page_number":  c["page_number"],
-            "chunk_type":   c["chunk_type"],
-            "rerank_score": round(c["rerank_score"], 3),
-            "snippet":      c["content"][:200],
-        } for c in top_chunks]
+        # Step 6 — Load session history + build window context
+        history        = _load_session_history(session_id)
+        window_context = _build_window_context(history)
+        response_text = _generate_response(query, top_chunks)
 
-        # Step 8: Cache
+        # Step 7 — Generate response
+        response_text = _generate_response(query, top_chunks, window_context)
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        # Step 8 — Build sources
+        sources = [
+            {
+                "file_name":   c["file_name"],
+                "page_number": c["page_number"],
+                "chunk_type":  c["chunk_type"],
+                "snippet":     c["content"][:200],
+            }
+            for c in top_chunks
+        ]
+
+        # Step 9 — Store cache
         store_cache(query, query_embedding, response_text, sources)
+
+        # Step 10 - Store History
+        query_id = _store_query_history(
+            session_id = session_id,
+            query      = query,
+            answer     = response_text,
+            sources    = sources,
+            latency_ms = latency_ms,
+            cache_hit  = False,
+        )
+
 
         return _api_response(200, {
             "response": response_text,
             "sources":  sources,
             "cached":   False,
+            "query_id": query_id,
         })
 
     except Exception as e:
@@ -325,3 +545,4 @@ def _api_response(status_code: int, body: dict) -> dict:
         },
         "body": json.dumps(body),
     }
+

@@ -40,7 +40,7 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
   queue {
     queue_arn     = aws_sqs_queue.doc_processing_queue.arn
     events        = ["s3:ObjectCreated:*"]
-    filter_prefix = "ingestion/"
+    filter_prefix = "ingestion/data/"
   }
 }
 

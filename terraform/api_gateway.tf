@@ -64,3 +64,12 @@ resource "aws_lambda_permission" "apigw_upload" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.rag_api.execution_arn}/*/*"
 }
+
+# ─── APIGATEWAY: FEEDBACK ────────────────────────────────────────────────────────
+
+resource "aws_apigatewayv2_route" "feedback" {
+  api_id    = aws_apigatewayv2_api.rag_api.id
+  route_key = "POST /feedback"
+  target    = "integrations/${aws_apigatewayv2_integration.retrieval.id}"
+}
+

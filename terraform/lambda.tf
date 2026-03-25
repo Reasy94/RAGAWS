@@ -14,7 +14,7 @@ resource "aws_lambda_function" "ingestion" {
   runtime          = "python3.12"
   role             = aws_iam_role.ingestion_role.arn
   timeout          = 900
-  memory_size      = 1024
+  memory_size      = 2048
   vpc_config {
     subnet_ids         = data.aws_subnets.default.ids
     security_group_ids = [aws_security_group.lambda_sg.id]
@@ -25,6 +25,7 @@ resource "aws_lambda_function" "ingestion" {
     variables = {
       DB_SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
       S3_BUCKET     = aws_s3_bucket.rag_documents.id
+      SQS_QUEUE_URL = aws_sqs_queue.doc_processing_queue.url
     }
   }
 }
@@ -45,7 +46,7 @@ resource "aws_lambda_function" "retrieval" {
   runtime          = "python3.12"
   role             = aws_iam_role.retrieval_role.arn
   timeout          = 30
-  memory_size      = 256
+  memory_size      = 512
   layers           = [aws_lambda_layer_version.shared.arn, aws_lambda_layer_version.dependencies.arn]
 
   environment {

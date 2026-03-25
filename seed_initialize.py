@@ -21,17 +21,13 @@ logger.setLevel(logging.INFO)
 
 domains_data = [
     {
-        "name": "aws_architecture",
-        "desc": "AWS whitepapers, cloud infrastructure, serverless architecture, Lambda, EC2, S3, RDS, VPC, IAM, technical guides, well-architected framework, microservices, DevOps, CI/CD, Terraform, infrastructure as code, scalability, high availability, cost optimization, security best practices."
+        "name": "global_economic_prospects",
+        "desc": "World Bank Global Economic Prospects, GEP reports, global economic outlook, GDP growth forecasts, emerging markets, developing economies, fiscal policy, monetary policy, inflation, trade, financial flows, debt sustainability, poverty, per capita income, regional economic analysis, advanced economies, global recession risks, investment, productivity growth, World Bank Group flagship report."
     },
     {
-        "name": "imf_economics",
-        "desc": "IMF Working Papers, International Monetary Fund, energy economics, euro area, macroeconomic modeling, potential output, fiscal policy, monetary policy, inflation, GDP growth, exchange rates, balance of payments, financial stability, sovereign debt, emerging market economies, economic forecasting, structural reforms."
-    },
-    {
-        "name": "world_bank_development",
-        "desc": "World Bank reports, global development, poverty reduction, sustainability, emerging markets, economic growth, GDP, developing countries, financial inclusion, infrastructure investment, climate finance, human capital, social protection, education, health systems, food security, private sector development, trade, urbanization, World Bank Group flagship report, global economic prospects."
-    },
+        "name": "commodity_markets",
+        "desc": "World Bank Commodity Markets Outlook, CMO reports, commodity prices, crude oil, natural gas, coal, metals, agriculture, fertilizers, precious metals, energy markets, supply and demand, OPEC, production forecasts, price indices, trade volumes, food commodities, raw materials, commodity price forecasts, global commodity trends."
+    }
 ]
 
 
@@ -99,6 +95,7 @@ def seed():
                 chunk_type  TEXT,
                 content     TEXT,
                 embedding   vector(1024),
+                s3_path    TEXT DEFAULT NULL,
                 PRIMARY KEY (file_hash, page_number, chunk_id)
             );
         """)
@@ -118,14 +115,23 @@ def seed():
             CREATE TABLE IF NOT EXISTS queries_history (
                 id SERIAL PRIMARY KEY,
                 session_id TEXT,
-                original_query TEXT NOT NULL,
-                hypotethical_doc TEXT,
+                query TEXT NOT NULL,
                 answer TEXT,
                 sources JSONB,
                 latency_ms INTEGER,
                 cache_hit BOOLEAN DEFAULT FALSE,
                 feedback BOOLEAN DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT NOW()
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS toc_cache (
+                file_hash VARCHAR PRIMARY KEY REFERENCES fileIngested(file_hash) ON DELETE CASCADE,
+                toc       JSONB    NOT NULL,
+                page_offset    INTEGER  NOT NULL,
+                last_content_page INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
 
