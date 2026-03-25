@@ -10,6 +10,7 @@ from shared.config import (
     RETRIEVAL_TOP_K,
     CACHE_SIMILARITY,
     CACHE_TTL_HOURS,
+    BUCKET_NAME
 )
 from shared.db import get_conn, put_conn
 from shared.embeddings import get_embedding, _find_closest_domain
@@ -71,7 +72,7 @@ def store_cache(
     try:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO query_cache (query_text, query_embedding, response, sources)
+            INSERT INTO rag.query_cache (query_text, query_embedding, response, sources)
             VALUES (%s, %s::vector, %s, %s)
             ON CONFLICT (query_text) DO UPDATE SET
                 query_embedding = EXCLUDED.query_embedding,
@@ -106,7 +107,7 @@ def _load_domain_chunks(domain_id: int) -> tuple[list[dict], BM25Okapi | None]:
         cur = conn.cursor()
         cur.execute("""
             SELECT c.file_hash, c.page_number, c.chunk_id, c.chunk_type,
-                   c.content, c.embedding, f.file_name
+                   c.content, c.embedding, f.file_name, c.s3_path
             FROM rag.chunks c
             JOIN rag.fileIngested f ON c.file_hash = f.file_hash
             WHERE f.id_domain = %s AND f.status = 'completed'
@@ -126,6 +127,7 @@ def _load_domain_chunks(domain_id: int) -> tuple[list[dict], BM25Okapi | None]:
                 "content":     row[4],
                 "embedding":   np.array(emb, dtype=np.float32),
                 "file_name":   row[6],
+                "s3_path":     row[7],
                 "id_domain":   domain_id,
             })
         if not chunks:
@@ -144,6 +146,20 @@ def _load_domain_chunks(domain_id: int) -> tuple[list[dict], BM25Okapi | None]:
     finally:
         put_conn(conn)
 
+
+def _get_presigned_url(s3_path: str | None, expiry: int = 3600) -> str | None:
+    if not s3_path:
+        return None
+    try:
+        s3 = boto3.client("s3")
+        return s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": BUCKET_NAME, "Key": s3_path},
+            ExpiresIn=expiry,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to generate presigned URL: {e}")
+        return None
 
 # ══════════════════════════════════════════════════════════════════════════════
 # V3 RETRIEVAL — BM25 + Vector → RRF
@@ -209,12 +225,18 @@ def _retrieve_v3(
 
 def _generate_response(query: str, chunks: list[dict], window_context: str = "") -> str:
     context = "\n\n---\n\n".join(
-        f"[Source {i}: {c['file_name']}, page {c['page_number']}]\n{c['content']}"
-        for i, c in enumerate(chunks, 1)
+        f"[{c['file_name']}, p.{c['page_number']}]\n{c['content']}"
+        for c in chunks
     )
     conversation_block = (f"\n\n---\n\n{window_context}" if window_context else "")
 
     body = json.dumps({
+        "system": [{"text": (
+            "You are an expert financial analyst assistant specializing in World Bank "
+            "economic reports specifically the Global Economic Prospects (GEP) and Commodity Markets Outlook (CMO) series. "
+            "Answer questions based strictly on the provided context. If the context lacks sufficient information, say so explicitly. "
+            "Write in a clear and professional tone."
+        )}],
         "messages": [{
             "role": "user",
             "content": [{
@@ -222,7 +244,7 @@ def _generate_response(query: str, chunks: list[dict], window_context: str = "")
                     f"Context:\n\n{context}"
                     f"{conversation_block}\n\n"
                     f"---\nQuestion: {query}\n\n"
-                    "Answer clearly and in detail, relying strictly on the provided context only."
+                    "Answer clearly and in detail."
                 )
             }]
         }],
@@ -286,44 +308,123 @@ def _store_query_history(
     latency_ms: int,
     cache_hit:  bool,
 ) -> int | None:
-    """Salva la query nella history e ritorna l'id generato."""
+    """
+    Salva la query corrente.
+    Se le query normali dopo l'ultimo summary sono >= WINDOW_SIZE,
+    genera un summary PRIMA di inserire la query corrente.
+    """
     conn = get_conn()
     try:
         cur = conn.cursor()
+
+        if session_id:
+            # Step 1 — Trova l'ultimo summary id
+            cur.execute("""
+                SELECT COALESCE(MAX(id), 0) FROM rag.queries_history
+                WHERE session_id = %s AND is_summary = TRUE
+            """, (session_id,))
+            last_summary_id = cur.fetchone()[0]
+
+            # Step 2 — Conta le query normali dopo l'ultimo summary
+            cur.execute("""
+                SELECT COUNT(*) FROM rag.queries_history
+                WHERE session_id = %s
+                  AND is_summary = FALSE
+                  AND id > %s
+            """, (session_id, last_summary_id))
+            count = cur.fetchone()[0]
+
+            # Step 3 — Se count >= WINDOW_SIZE, genera summary
+            if count >= WINDOW_SIZE:
+                cur.execute("""
+                    SELECT query, answer FROM rag.queries_history
+                    WHERE session_id = %s
+                      AND is_summary = FALSE
+                      AND id > %s
+                    ORDER BY created_at ASC
+                """, (session_id, last_summary_id))
+                to_summarize = [{"query": r[0], "answer": r[1]} for r in cur.fetchall()]
+
+                # Includi il summary precedente se esiste
+                if last_summary_id > 0:
+                    cur.execute("""
+                        SELECT summary FROM rag.queries_history
+                        WHERE id = %s
+                    """, (last_summary_id,))
+                    prev_summary_row = cur.fetchone()
+                    if prev_summary_row and prev_summary_row[0]:
+                        to_summarize = [{"query": "Previous summary", "answer": prev_summary_row[0]}] + to_summarize
+
+                summary_text = _summarize_history(to_summarize)
+                if summary_text:
+                    cur.execute("""
+                        INSERT INTO rag.queries_history
+                            (session_id, is_summary, summary, cache_hit)
+                        VALUES (%s, TRUE, %s, FALSE)
+                    """, (session_id, summary_text))
+                    conn.commit()
+                    logger.info(f"Summary generated for session {session_id[:8]}")
+
+        # Step 4 — Inserisci la query corrente
         cur.execute("""
             INSERT INTO rag.queries_history
-                (session_id, query, answer, sources, latency_ms, cache_hit)
-            VALUES (%s, %s, %s, %s, %s, %s)
+                (session_id, query, answer, sources, latency_ms, cache_hit, is_summary)
+            VALUES (%s, %s, %s, %s, %s, %s, FALSE)
             RETURNING id
         """, (session_id, query, answer, json.dumps(sources), latency_ms, cache_hit))
         row = cur.fetchone()
         conn.commit()
         return row[0] if row else None
+
     except Exception as e:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         logger.warning(f"Failed to store query history: {e}")
         return None
     finally:
         put_conn(conn)
 
 
-def _load_session_history(session_id: str) -> list[dict]:
-    """Carica la history della sessione ordinata per created_at."""
+def _load_session_history(session_id: str) -> dict:
+    """
+    Carica l'ultimo summary + le query successive per la sessione.
+    Ritorna: {"summary": str|None, "recent": list[dict]}
+    """
     if not session_id:
-        return []
+        return {"summary": None, "recent": []}
+
     conn = get_conn()
     try:
         cur = conn.cursor()
+
+        # Trova l'ultimo summary
         cur.execute("""
-            SELECT query, answer
-            FROM rag.queries_history
-            WHERE session_id = %s
-            ORDER BY created_at ASC
+            SELECT id, summary FROM rag.queries_history
+            WHERE session_id = %s AND is_summary = TRUE
+            ORDER BY id DESC
+            LIMIT 1
         """, (session_id,))
-        return [{"query": row[0], "answer": row[1]} for row in cur.fetchall()]
+        summary_row = cur.fetchone()
+        last_summary_id = summary_row[0] if summary_row else 0
+        summary_text    = summary_row[1] if summary_row else None
+
+        # Carica le query normali dopo l'ultimo summary
+        cur.execute("""
+            SELECT query, answer FROM rag.queries_history
+            WHERE session_id = %s
+              AND is_summary = FALSE
+              AND id > %s
+            ORDER BY created_at ASC
+        """, (session_id, last_summary_id))
+        recent = [{"query": row[0], "answer": row[1]} for row in cur.fetchall()]
+
+        return {"summary": summary_text, "recent": recent}
+
     except Exception as e:
         logger.warning(f"Failed to load session history: {e}")
-        return []
+        return {"summary": None, "recent": []}
     finally:
         put_conn(conn)
 
@@ -371,49 +472,30 @@ def _summarize_history(history: list[dict]) -> str:
         return ""
 
 
-def _build_window_context(history: list[dict]) -> str:
+def _build_window_context(history: dict) -> str:
     """
     Costruisce il contesto della memoria a window.
-
-    Schema:
-      len <= WINDOW_SIZE     → history plain
-      len == WINDOW_SIZE+1   → summary(primi 3) + ultimo
-      len == WINDOW_SIZE+2   → summary(primi 3) + ultimi 2
-      len == WINDOW_SIZE+3   → summary(primi 3) + ultimi 3
-      len == WINDOW_SIZE*2+1 → summary(summary+3) + ultimo  (nuovo ciclo)
+    history = {"summary": str|None, "recent": list[dict]}
     """
-    if not history:
+    summary = history.get("summary")
+    recent  = history.get("recent", [])
+
+    if not summary and not recent:
         return ""
 
-    n = len(history)
+    parts = []
 
-    if n <= WINDOW_SIZE:
-        # History plain — nessun summary
-        parts = [
+    if summary:
+        parts.append(f"Summary of previous conversation:\n{summary}")
+
+    if recent:
+        recent_text = "\n\n".join(
             f"User: {h['query']}\nAssistant: {h['answer']}"
-            for h in history
-        ]
-        return "Previous conversation:\n\n" + "\n\n".join(parts)
+            for h in recent
+        )
+        parts.append(f"Recent conversation:\n\n{recent_text}")
 
-    # Calcola quanti blocchi di WINDOW_SIZE sono stati summarizzati
-    summarized_count = (n // WINDOW_SIZE) * WINDOW_SIZE - WINDOW_SIZE
-    recent           = history[summarized_count:]
-
-    # Se siamo all'inizio di un nuovo blocco, summarizza il blocco precedente
-    if len(recent) > WINDOW_SIZE:
-        to_summarize = history[:summarized_count + WINDOW_SIZE]
-        summary      = _summarize_history(to_summarize)
-        recent       = history[summarized_count + WINDOW_SIZE:]
-    else:
-        summary = _summarize_history(history[:summarized_count + WINDOW_SIZE - len(recent)])
-
-    parts = [f"User: {h['query']}\nAssistant: {h['answer']}" for h in recent]
-    recent_text = "\n\n".join(parts)
-
-    return (
-        f"Summary of previous conversation:\n{summary}\n\n"
-        f"Recent conversation:\n\n{recent_text}"
-    )
+    return "\n\n---\n\n".join(parts)
 # ══════════════════════════════════════════════════════════════════════════════
 # ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -457,7 +539,7 @@ def lambda_handler(event, context):
             return _api_response(200, cached)
 
         # Step 3 — Domain detection
-        domain_id = _find_closest_domain(query_embedding)
+        domain_id = _find_closest_domain(np.array(query_embedding, dtype=np.float32))
         if domain_id is None:
             return _api_response(200, {
                 "response": "The question does not appear to be relevant to the available documentation.",
@@ -492,9 +574,6 @@ def lambda_handler(event, context):
         # Step 6 — Load session history + build window context
         history        = _load_session_history(session_id)
         window_context = _build_window_context(history)
-        response_text = _generate_response(query, top_chunks)
-
-        # Step 7 — Generate response
         response_text = _generate_response(query, top_chunks, window_context)
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -506,6 +585,7 @@ def lambda_handler(event, context):
                 "page_number": c["page_number"],
                 "chunk_type":  c["chunk_type"],
                 "snippet":     c["content"][:200],
+                "image_url":   _get_presigned_url(c.get("s3_path")) if c["chunk_type"] in ("FIGURE", "TABLE") else None,
             }
             for c in top_chunks
         ]

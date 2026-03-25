@@ -19,7 +19,6 @@ const styles = `
     --amber:       #c8a255;
     --amber-dim:   rgba(200,162,85,0.12);
     --amber-text:  #e8c87a;
-    --slate:       #8b98b8;
     --text-primary:   #e8ecf4;
     --text-secondary: #8b98b8;
     --text-dim:       rgba(139,152,184,0.45);
@@ -148,8 +147,16 @@ const styles = `
   .msg-sources {
     margin-top: 10px; padding-top: 10px;
     border-top: 1px solid var(--border);
-    display: flex; flex-wrap: wrap; gap: 5px;
+    display: flex; flex-wrap: wrap; gap: 8px;
   }
+
+  .source-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 100%;
+  }
+
   .source-pill {
     padding: 2px 8px;
     background: var(--amber-dim);
@@ -157,7 +164,27 @@ const styles = `
     font-size: 10px; font-family: var(--font-mono);
     color: var(--amber-text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px;
+    display: flex; align-items: center; gap: 4px;
   }
+
+  .source-type {
+    padding: 1px 5px;
+    font-size: 9px;
+    background: rgba(200,162,85,0.2);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--amber);
+  }
+
+  .source-image {
+    max-width: 100%;
+    max-height: 300px;
+    object-fit: contain;
+    border: 1px solid var(--border-mid);
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .source-image:hover { opacity: 0.85; }
 
   .feedback-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
   .feedback-hint { font-size: 10px; font-family: var(--font-mono); color: var(--text-dim); margin-right: 2px; }
@@ -213,6 +240,13 @@ const styles = `
   .send-btn:hover:not(:disabled) { opacity: 0.85; }
   .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
   .send-btn svg { width: 14px; height: 14px; }
+
+  .cached-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; font-size: 10px; font-family: var(--font-mono);
+    color: var(--amber-text); background: var(--amber-dim);
+    border: 1px solid rgba(200,162,85,0.2); margin-left: 8px;
+  }
 
   .upload-page { flex: 1; padding: 36px 44px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
   .page-header { margin-bottom: 32px; }
@@ -271,13 +305,6 @@ const styles = `
   }
   .remove-btn:hover { border-color: var(--error); color: var(--error); }
   .remove-btn svg { width: 10px; height: 10px; }
-
-  .cached-badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 7px; font-size: 10px; font-family: var(--font-mono);
-    color: var(--amber-text); background: var(--amber-dim);
-    border: 1px solid rgba(200,162,85,0.2); margin-left: 8px;
-  }
 `;
 
 const ChatIcon = () => (
@@ -285,6 +312,7 @@ const ChatIcon = () => (
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
   </svg>
 );
+
 const UploadIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -292,29 +320,35 @@ const UploadIcon = () => (
     <line x1="12" y1="3" x2="12" y2="15"/>
   </svg>
 );
+
 const SendIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="22" y1="2" x2="11" y2="13"/>
     <polygon points="22 2 15 22 11 13 2 9 22 2"/>
   </svg>
 );
+
 const XIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    <line x1="18" y1="6" x2="6" y2="18"/>
+    <line x1="6" y1="6" x2="18" y2="18"/>
   </svg>
 );
+
 const ThumbUp = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
     <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
   </svg>
 );
+
 const ThumbDown = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
     <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
   </svg>
 );
+
 const DocIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -367,7 +401,9 @@ function ChatPage() {
   const endRef = useRef(null);
   const taRef = useRef(null);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   const resize = () => {
     const ta = taRef.current;
@@ -422,7 +458,7 @@ function ChatPage() {
             {sessionId.current.slice(0, 8)}
           </span>
         </div>
-        <span className="topbar-label" style={{ color: "var(--amber)", fontSize: "10px" }}>RAG · v3</span>
+        <span className="topbar-label" style={{ color: "var(--amber)", fontSize: "10px" }}>RAG · V3</span>
       </div>
 
       <div className="messages">
@@ -430,7 +466,7 @@ function ChatPage() {
           <div className="empty">
             <div className="empty-mark">⊗</div>
             <div className="empty-title">Ready for queries</div>
-            <div className="empty-sub">Ask anything about your documents</div>
+            <div className="empty-sub">World Bank GEP · World Bank CMO</div>
           </div>
         ) : (
           messages.map((msg, i) => (
@@ -443,9 +479,22 @@ function ChatPage() {
                   {msg.sources?.length > 0 && (
                     <div className="msg-sources">
                       {msg.sources.map((s, j) => (
-                        <span key={j} className="source-pill">
-                          {s.file_name} · p.{s.page_number}
-                        </span>
+                        <div key={j} className="source-item">
+                          <span className="source-pill">
+                            {s.file_name} · p.{s.page_number}
+                            {s.chunk_type !== "TEXT" && (
+                              <span className="source-type">{s.chunk_type}</span>
+                            )}
+                          </span>
+                          {s.image_url && (
+                            <img
+                              src={s.image_url}
+                              alt={`${s.chunk_type} from ${s.file_name} p.${s.page_number}`}
+                              className="source-image"
+                              onClick={() => window.open(s.image_url, "_blank")}
+                            />
+                          )}
+                        </div>
                       ))}
                     </div>
                   )}
@@ -460,7 +509,11 @@ function ChatPage() {
         {loading && (
           <div className="msg assistant">
             <div className="msg-avatar">AI</div>
-            <div className="typing"><div className="dot"/><div className="dot"/><div className="dot"/></div>
+            <div className="typing">
+              <div className="dot"/>
+              <div className="dot"/>
+              <div className="dot"/>
+            </div>
           </div>
         )}
         <div ref={endRef} />
@@ -474,7 +527,12 @@ function ChatPage() {
             placeholder="Query your financial documents..."
             value={input}
             onChange={e => { setInput(e.target.value); resize(); }}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            onKeyDown={e => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
             rows={1}
           />
           <button className="send-btn" onClick={send} disabled={!input.trim() || loading}>
@@ -493,7 +551,15 @@ function UploadPage() {
 
   const addFiles = (raw) => {
     const pdfs = Array.from(raw).filter(f => f.type === "application/pdf");
-    setFiles(p => [...p, ...pdfs.map(f => ({ file: f, id: crypto.randomUUID(), status: "pending", progress: 0 }))]);
+    setFiles(p => [
+      ...p,
+      ...pdfs.map(f => ({
+        file: f,
+        id: crypto.randomUUID(),
+        status: "pending",
+        progress: 0,
+      })),
+    ]);
   };
 
   const remove = (id) => setFiles(p => p.filter(f => f.id !== id));
@@ -508,7 +574,11 @@ function UploadPage() {
           body: JSON.stringify({ filename: item.file.name, content_type: "application/pdf" }),
         });
         const { upload_url } = await res.json();
-        await fetch(upload_url, { method: "PUT", body: item.file, headers: { "Content-Type": "application/pdf" } });
+        await fetch(upload_url, {
+          method: "PUT",
+          body: item.file,
+          headers: { "Content-Type": "application/pdf" },
+        });
         setFiles(p => p.map(f => f.id === item.id ? { ...f, status: "done", progress: 100 } : f));
       } catch {
         setFiles(p => p.map(f => f.id === item.id ? { ...f, status: "error" } : f));
@@ -556,7 +626,9 @@ function UploadPage() {
                 <div className="file-name">{item.file.name}</div>
                 <div className="file-meta">{formatBytes(item.file.size)}</div>
                 {item.status === "uploading" && (
-                  <div className="progress-wrap"><div className="progress-bar" style={{ width: item.progress + "%" }} /></div>
+                  <div className="progress-wrap">
+                    <div className="progress-bar" style={{ width: item.progress + "%" }} />
+                  </div>
                 )}
               </div>
               <div className={`file-status ${item.status}`}>
@@ -566,7 +638,9 @@ function UploadPage() {
                 {item.status === "error" && "✕ failed"}
               </div>
               {item.status === "pending" && (
-                <button className="remove-btn" onClick={() => remove(item.id)}><XIcon /></button>
+                <button className="remove-btn" onClick={() => remove(item.id)}>
+                  <XIcon />
+                </button>
               )}
             </div>
           ))}
@@ -583,6 +657,7 @@ function UploadPage() {
 
 export default function App() {
   const [page, setPage] = useState("chat");
+
   return (
     <>
       <style>{styles}</style>
@@ -590,10 +665,18 @@ export default function App() {
         <nav className="sidebar">
           <div className="sidebar-mark">Σ</div>
           <div className="sidebar-divider" />
-          <button className={`nav-btn ${page === "chat" ? "active" : ""}`} onClick={() => setPage("chat")} title="Query">
+          <button
+            className={`nav-btn ${page === "chat" ? "active" : ""}`}
+            onClick={() => setPage("chat")}
+            title="Query"
+          >
             <ChatIcon />
           </button>
-          <button className={`nav-btn ${page === "upload" ? "active" : ""}`} onClick={() => setPage("upload")} title="Ingest">
+          <button
+            className={`nav-btn ${page === "upload" ? "active" : ""}`}
+            onClick={() => setPage("upload")}
+            title="Ingest"
+          >
             <UploadIcon />
           </button>
         </nav>

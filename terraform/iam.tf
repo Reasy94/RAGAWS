@@ -114,6 +114,34 @@ resource "aws_iam_policy" "retrieval_policy" {
         Effect   = "Allow"
         Action   = ["bedrock:InvokeModel"]
         Resource = ["*"]
+      },
+            {
+        Sid      = "S3ReadDocuments"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject"]
+        Resource = ["${aws_s3_bucket.rag_documents.arn}/*"]
+      },
+	  {
+        Sid      = "S3ListBucket"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = ["${aws_s3_bucket.rag_documents.arn}"]
+      },
+	        {
+        Sid    = "MarketplaceSubscription"
+        Effect = "Allow"
+        Action = [
+          "aws-marketplace:Subscribe",
+          "aws-marketplace:Unsubscribe",
+          "aws-marketplace:ViewSubscriptions"
+        ]
+        Resource = ["*"]
+      },
+      {
+        Sid    = "KMSDecrypt"
+        Effect = "Allow"
+        Action = ["kms:Decrypt","kms:DescribeKey"]
+        Resource = [aws_kms_key.secrets_key.arn]
       }
     ]
   })
@@ -129,6 +157,10 @@ resource "aws_iam_role_policy_attachment" "retrieval_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role_policy_attachment" "retrieval_vpc" {
+  role       = aws_iam_role.retrieval_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
 
 # ─── UPLOAD ROLE ───────────────────────────────────────────────────────────
 

@@ -46,7 +46,11 @@ resource "aws_lambda_function" "retrieval" {
   runtime          = "python3.12"
   role             = aws_iam_role.retrieval_role.arn
   timeout          = 30
-  memory_size      = 512
+  memory_size      = 2048
+  vpc_config {
+    subnet_ids         = data.aws_subnets.default.ids
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
   layers           = [aws_lambda_layer_version.shared.arn, aws_lambda_layer_version.dependencies.arn]
 
   environment {
