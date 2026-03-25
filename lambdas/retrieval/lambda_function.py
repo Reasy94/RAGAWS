@@ -215,6 +215,8 @@ def _retrieve_v3(
     vec_results  = _vector_search(query_embedding, chunks, top_k=VECTOR_BROAD_K)
     bm25_results = _bm25_search(query, chunks, bm25, top_k=BM25_BROAD_K)
     fused        = _rrf([vec_results, bm25_results])[:RETRIEVAL_TOP_K]
+    for i, chunk in enumerate(fused):
+        logger.info(f"Chunk {i+1}: {chunk['file_name']} p.{chunk['page_number']} type={chunk['chunk_type']} chunk_id={chunk['chunk_id']}")
     logger.info(f"V3 RRF returned {len(fused)} chunks")
     return fused
 
@@ -579,16 +581,20 @@ def lambda_handler(event, context):
         latency_ms = int((time.time() - start_time) * 1000)
 
         # Step 8 — Build sources
-        sources = [
-            {
-                "file_name":   c["file_name"],
-                "page_number": c["page_number"],
-                "chunk_type":  c["chunk_type"],
-                "snippet":     c["content"][:200],
-                "image_url":   _get_presigned_url(c.get("s3_path")) if c["chunk_type"] in ("FIGURE", "TABLE") else None,
-            }
-            for c in top_chunks
-        ]
+        seen = set()
+        sources = []
+        for c in top_chunks:
+            file_name = c["file_name"].split("/")[-1]
+            key = (file_name, c["page_number"], c["chunk_type"])
+            if key not in seen:
+                seen.add(key)
+                sources.append({
+                    "file_name":   file_name,
+                    "page_number": c["page_number"],
+                    "chunk_type":  c["chunk_type"],
+                    "snippet":     c["content"][:200],
+                    "image_url":   _get_presigned_url(c.get("s3_path")) if c["chunk_type"] in ("FIGURE", "TABLE") else None,
+                })
 
         # Step 9 — Store cache
         store_cache(query, query_embedding, response_text, sources)

@@ -1,1 +1,29 @@
-/* empty - styles managed in App.jsx */
+.source-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.source-type {
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 9px;
+  background: rgba(200,162,85,0.2);
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.source-image {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border: 1px solid var(--border-mid);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.source-image:hover {
+  opacity: 0.85;
+}
