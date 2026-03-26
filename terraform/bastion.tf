@@ -1,6 +1,3 @@
-# ─── BASTION HOST ────────────────────────────────────────────────────────────
-
-# Cerca l'AMI Amazon Linux 2023 più recente
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
@@ -16,7 +13,6 @@ data "aws_ami" "amazon_linux" {
   }
 }
 
-# Security group per il bastion — solo SSH dal tuo IP
 resource "aws_security_group" "bastion_sg" {
   name        = "${var.project_name}-bastion-sg"
   description = "SSH access to bastion from developer IP only"
@@ -38,7 +34,6 @@ resource "aws_security_group" "bastion_sg" {
   }
 }
 
-# Aggiungi il bastion SG al RDS SG
 resource "aws_security_group_rule" "rds_from_bastion" {
   type                     = "ingress"
   from_port                = 5432
@@ -49,13 +44,11 @@ resource "aws_security_group_rule" "rds_from_bastion" {
   description              = "Bastion access to RDS"
 }
 
-# Key pair per SSH
 resource "aws_key_pair" "bastion_key" {
   key_name   = "${var.project_name}-bastion-key"
   public_key = var.bastion_public_key
 }
 
-# Istanza EC2 bastion
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ami.amazon_linux.id
   instance_type               = "t3.micro"
@@ -67,9 +60,4 @@ resource "aws_instance" "bastion" {
   tags = {
     Name = "${var.project_name}-bastion"
   }
-}
-
-output "bastion_public_ip" {
-  value       = aws_instance.bastion.public_ip
-  description = "Bastion host public IP"
 }

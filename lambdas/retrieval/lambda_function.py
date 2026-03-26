@@ -10,24 +10,23 @@ from shared.config import (
     RETRIEVAL_TOP_K,
     CACHE_SIMILARITY,
     CACHE_TTL_HOURS,
-    BUCKET_NAME
+    BUCKET_NAME,
+    WINDOW_SIZE,
+    VECTOR_BROAD_K,
+    BM25_BROAD_K,
+    RRF_K
 )
 from shared.db import get_conn, put_conn
-from shared.embeddings import get_embedding, _find_closest_domain
+from shared.embeddings import get_embedding, find_closest_domain
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 bedrock = boto3.client("bedrock-runtime")
-
+s3 = boto3.client("s3")
 # ── In-memory warm cache (reused across hot Lambda instances) ─────────────────
 _domain_chunks_cache: dict[int, list[dict]] = {}
 _domain_bm25_cache:   dict[int, BM25Okapi]  = {}
-
-VECTOR_BROAD_K = 20
-BM25_BROAD_K   = 20
-RRF_K          = 60
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SEMANTIC CACHE
@@ -151,7 +150,6 @@ def _get_presigned_url(s3_path: str | None, expiry: int = 3600) -> str | None:
     if not s3_path:
         return None
     try:
-        s3 = boto3.client("s3")
         return s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": BUCKET_NAME, "Key": s3_path},
@@ -180,8 +178,9 @@ def _vector_search(
         for c in chunks
     ]
     scores.sort(key=lambda x: x[0], reverse=True)
+    for score, c in scores[:top_k]:
+        c["vector_score"] = float(score)
     return [c for _, c in scores[:top_k]]
-
 
 def _bm25_search(
     query:  str,
@@ -215,8 +214,20 @@ def _retrieve_v3(
     vec_results  = _vector_search(query_embedding, chunks, top_k=VECTOR_BROAD_K)
     bm25_results = _bm25_search(query, chunks, bm25, top_k=BM25_BROAD_K)
     fused        = _rrf([vec_results, bm25_results])[:RETRIEVAL_TOP_K]
+    
+    vec_score_map = {
+        (c["file_hash"], c["page_number"], c["chunk_id"]): c.get("vector_score")
+        for c in vec_results
+    }
+
+    for chunk in fused:
+        key = (chunk["file_hash"], chunk["page_number"], chunk["chunk_id"])
+        chunk["vector_score"] = vec_score_map.get(key)
+        
     for i, chunk in enumerate(fused):
-        logger.info(f"Chunk {i+1}: {chunk['file_name']} p.{chunk['page_number']} type={chunk['chunk_type']} chunk_id={chunk['chunk_id']}")
+        score = chunk.get('vector_score')
+        score_str = f"{score:.3f}" if score is not None else "N/A"
+        logger.info(f"Chunk {i+1}: {chunk['file_name']} p.{chunk['page_number']} type={chunk['chunk_type']} chunk_id={chunk['chunk_id']} vector_score={score_str}")
     logger.info(f"V3 RRF returned {len(fused)} chunks")
     return fused
 
@@ -311,24 +322,17 @@ def _store_query_history(
     latency_ms: int,
     cache_hit:  bool,
 ) -> int | None:
-    """
-    Salva la query corrente.
-    Se le query normali dopo l'ultimo summary sono >= WINDOW_SIZE,
-    genera un summary PRIMA di inserire la query corrente.
-    """
     conn = get_conn()
     try:
         cur = conn.cursor()
 
         if session_id:
-            # Step 1 — Trova l'ultimo summary id
             cur.execute("""
                 SELECT COALESCE(MAX(id), 0) FROM rag.queries_history
                 WHERE session_id = %s AND is_summary = TRUE
             """, (session_id,))
             last_summary_id = cur.fetchone()[0]
 
-            # Step 2 — Conta le query normali dopo l'ultimo summary
             cur.execute("""
                 SELECT COUNT(*) FROM rag.queries_history
                 WHERE session_id = %s
@@ -337,7 +341,6 @@ def _store_query_history(
             """, (session_id, last_summary_id))
             count = cur.fetchone()[0]
 
-            # Step 3 — Se count >= WINDOW_SIZE, genera summary
             if count >= WINDOW_SIZE:
                 cur.execute("""
                     SELECT query, answer FROM rag.queries_history
@@ -348,7 +351,6 @@ def _store_query_history(
                 """, (session_id, last_summary_id))
                 to_summarize = [{"query": r[0], "answer": r[1]} for r in cur.fetchall()]
 
-                # Includi il summary precedente se esiste
                 if last_summary_id > 0:
                     cur.execute("""
                         SELECT summary FROM rag.queries_history
@@ -367,6 +369,7 @@ def _store_query_history(
                     """, (session_id, summary_text))
                     conn.commit()
                     logger.info(f"Summary generated for session {session_id[:8]}")
+                    cur = conn.cursor()  # ← cursore fresco dopo il commit
 
         # Step 4 — Inserisci la query corrente
         cur.execute("""
@@ -377,6 +380,7 @@ def _store_query_history(
         """, (session_id, query, answer, json.dumps(sources), latency_ms, cache_hit))
         row = cur.fetchone()
         conn.commit()
+        logger.info(f"Query history stored: id={row[0] if row else None}")
         return row[0] if row else None
 
     except Exception as e:
@@ -384,7 +388,7 @@ def _store_query_history(
             conn.rollback()
         except Exception:
             pass
-        logger.warning(f"Failed to store query history: {e}")
+        logger.error(f"Failed to store query history: {e}")
         return None
     finally:
         put_conn(conn)
@@ -435,9 +439,6 @@ def _load_session_history(session_id: str) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 # WINDOW MEMORY
 # ══════════════════════════════════════════════════════════════════════════════
-
-WINDOW_SIZE = 3
-
 
 def _summarize_history(history: list[dict]) -> str:
     """Riassume la history con Nova Pro."""
@@ -501,9 +502,10 @@ def _build_window_context(history: dict) -> str:
     return "\n\n---\n\n".join(parts)
 
 def _enrich_sources(sources: list[dict]) -> list[dict]:
-    for s in sources:
-        s["image_url"] = _get_presigned_url(s.get("s3_path"))
-    return sources
+    return [
+        {**s, "image_url": _get_presigned_url(s.get("s3_path"))}
+        for s in sources
+    ]
 # ══════════════════════════════════════════════════════════════════════════════
 # ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -548,7 +550,7 @@ def lambda_handler(event, context):
             return _api_response(200, cached)
 
         # Step 3 — Domain detection
-        domain_id = _find_closest_domain(np.array(query_embedding, dtype=np.float32))
+        domain_id = find_closest_domain(np.array(query_embedding, dtype=np.float32))
         if domain_id is None:
             return _api_response(200, {
                 "response": "The question does not appear to be relevant to the available documentation.",
@@ -587,7 +589,7 @@ def lambda_handler(event, context):
 
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # Step 8 — Build sources
+        # Step 7 — Build sources
         seen = set()
         sources = []
         for c in top_chunks:
@@ -602,10 +604,10 @@ def lambda_handler(event, context):
                     "s3_path":     c.get("s3_path") if c["chunk_type"] in ("FIGURE", "TABLE") else None,
                 })
 
-        # Step 9 — con s3_path
+        # Step 8 — con s3_path
         store_cache(query, query_embedding, response_text, sources)
 
-        # Step 10 - Store History
+        # Step 9 - Store History
         query_id = _store_query_history(
             session_id = session_id,
             query      = query,
@@ -637,4 +639,3 @@ def _api_response(status_code: int, body: dict) -> dict:
         },
         "body": json.dumps(body),
     }
-

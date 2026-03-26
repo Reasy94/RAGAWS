@@ -9,19 +9,10 @@ data "aws_subnets" "default" {
   }
 }
 
-# Security group per le Lambda
 resource "aws_security_group" "lambda_sg" {
   name        = "${var.project_name}-lambda-sg"
   description = "Lambda outbound access"
   vpc_id      = data.aws_vpc.default.id
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS for VPC endpoints"
-  }
 
   egress {
     from_port   = 0
@@ -31,13 +22,11 @@ resource "aws_security_group" "lambda_sg" {
   }
 }
 
-# Security group per RDS — solo Lambda + tuo IP
 resource "aws_security_group" "rds_sg" {
   name        = "${var.project_name}-rds-sg"
   description = "Postgres access - Lambda SG and developer IP only"
   vpc_id      = data.aws_vpc.default.id
 
-  # Accesso dalle Lambda tramite security group
   ingress {
     from_port       = 5432
     to_port         = 5432
@@ -46,7 +35,6 @@ resource "aws_security_group" "rds_sg" {
     description     = "Lambda access"
   }
 
-  # Accesso dal tuo IP per debug/admin
   ingress {
     from_port   = 5432
     to_port     = 5432

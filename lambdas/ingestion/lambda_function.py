@@ -35,14 +35,14 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 import gc
 
 from shared.config import (
-    CHUNK_SIZE, CHUNK_OVERLAP, MIN_TABLE_ROWS, PAGE_FLUSH_SIZE,
+    CHUNK_SIZE, CHUNK_OVERLAP, PAGE_FLUSH_SIZE,
     MAX_INPUT_CHARS, HAIKU_MODEL_ID,
     PAGE_WEIGHTS, TEXT_PAGES_NEEDED, MIN_TEXT_LENGTH,
     MAX_EMBEDDING_WORKERS, MAX_VISION_RETRIES, MAX_VISION_BASE_DELAY,
     NOVA_PRO_MODEL_ID, BUCKET_NAME, COHERE_MODEL_ID, INGESTION_SOURCE
 )
 from shared.db import get_conn, put_conn
-from shared.embeddings import get_embedding, _find_closest_domain
+from shared.embeddings import get_embedding, find_closest_domain
 
 _EXCLUDE_SECTION_TYPES = re.compile(
     r'^(text tables?|list of tables?|appendix|appendixes|cover|contents|preface|'
@@ -60,6 +60,7 @@ bedrock = boto3.client(
     "bedrock-runtime",
     config=Config(read_timeout=30, connect_timeout=10),
 )
+s3 = boto3.client("s3")
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
 #ORPHAN_TOKEN   = re.compile(r'(?<!\w)[A-Z]{1,2}(?!\w)')
@@ -120,7 +121,6 @@ def lambda_handler(event, context):
     return {"batchItemFailures": batch_item_failures}
 
 def process_single_file(bucket: str, key: str):
-    s3           = boto3.client("s3")
     file_content = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
     file_hash    = calculate_file_hash(file_content)
     logger.info(f"File downloaded: {len(file_content)} bytes, hash: {file_hash[:8]}...")
@@ -466,7 +466,7 @@ def _calculate_page_offset(
         logger.info(f"Page offset={offset} (fisica={page_idx+1}, stampata={found_num})")
         return offset
 
-    logger.warning("Header numerico non trovato — offset=0")
+    logger.warning("Numeric header not found — offset=0")
     return 0
 
 
@@ -489,13 +489,13 @@ def _clean_orphans(text: str) -> str:
 
 def _find_last_content_page(plumber_pdf, toc, offset):
     if not toc:
-        logger.info("_find_last_content_page: TOC vuoto — ritorno len(pages)")
+        logger.info("_find_last_content_page: empty TOC — returning len(pages)")
         return len(plumber_pdf.pages)
     
     # Pagina fisica dell'ultima entry TOC
     last_toc_entry = toc[-1]
     last_toc_physical = last_toc_entry["page"] + offset
-    logger.info(f"_find_last_content_page: ultima entry='{last_toc_entry['title']}' page={last_toc_entry['page']} offset={offset} → fisica={last_toc_physical}")
+    logger.info(f"_find_last_content_page: last entry='{last_toc_entry['title']}' page={last_toc_entry['page']} offset={offset} → fisica={last_toc_physical}")
     # Scannerizziamo in avanti dall'ultima entry TOC
     # Cerchiamo una pagina vuota che segna la fine del contenuto
     for page_idx in range(last_toc_physical, len(plumber_pdf.pages)):
@@ -505,7 +505,7 @@ def _find_last_content_page(plumber_pdf, toc, offset):
         if chars < 50:
             logger.info(f"_find_last_content_page: STOP at page {page_idx}")
             return page_idx
-    logger.info(f"_find_last_content_page: nessuna blank trovata — ritorno {len(plumber_pdf.pages)}")
+    logger.info(f"_find_last_content_page: no blank page found — returning {len(plumber_pdf.pages)}")
     return len(plumber_pdf.pages)
 
 
@@ -688,7 +688,6 @@ def _split_by_columns(
     mid     = width / 2
     margin_left = 2
     margin_right = 2
-    margin  = 0  # Margine gutter per separazione colonne
 
     for blk in content_blocks:
         side = blk["figure_side"]
@@ -962,7 +961,7 @@ def _make_raw_chunk(
     chunk_id: int,
     chunk_type: str,
     content: str,
-    s3_path :str = None
+    s3_path: str | None = None
 ) -> dict:
     return {
         "file_hash":  file_hash,
@@ -971,7 +970,7 @@ def _make_raw_chunk(
         "chunk_type": chunk_type,
         "content":    content,
         "vector":     None,
-        "s3_path": s3_path
+        "s3_path":    s3_path
     }
 
 
@@ -1076,7 +1075,7 @@ def get_vector_domain(pdf: pdfplumber.PDF) -> int | None:
     weights    = [w / total for w in weights]
     embeddings = [get_embedding(t[:MAX_INPUT_CHARS]) for t in text_pages]
     centroid   = (v := np.dot(weights, embeddings)) / np.linalg.norm(v)
-    domain_id  = _find_closest_domain(centroid)
+    domain_id  = find_closest_domain(centroid)
     logger.info(f"Domain detected: id={domain_id}")
     return domain_id
 
@@ -1248,8 +1247,13 @@ def delete_toc_cache(file_hash: str):
 # S3
 # ==============================================================================
 
-def _upload_image_to_s3(image_bytes, file_hash, page_num, chunk_id, bucket_name):
-    s3 = boto3.client("s3")
+def _upload_image_to_s3(
+    image_bytes: bytes,
+    file_hash:   str,
+    page_num:    int,
+    chunk_id:    int,
+    bucket_name: str,
+) -> str:
     s3_key = f"ingestion/assets/{file_hash}/p{page_num}_c{chunk_id}.jpg"
     
     s3.put_object(

@@ -32,7 +32,7 @@ def get_embedding(text: str, input_type: str = "search_document") -> list[float]
     return body["embeddings"][0]
 
 
-def _find_closest_domain(centroid: list[float]) -> int | None:
+def find_closest_domain(centroid: list[float]) -> int | None:
     conn = get_conn()
     try:
         cur = conn.cursor()

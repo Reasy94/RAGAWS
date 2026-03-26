@@ -34,7 +34,7 @@ resource "aws_apigatewayv2_route" "query" {
 }
 
 resource "aws_lambda_permission" "apigw_retrieval" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeRetrieval"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.retrieval.function_name
   principal     = "apigateway.amazonaws.com"
@@ -58,7 +58,7 @@ resource "aws_apigatewayv2_route" "upload" {
 }
 
 resource "aws_lambda_permission" "apigw_upload" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeUpload"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.upload.function_name
   principal     = "apigateway.amazonaws.com"

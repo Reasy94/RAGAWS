@@ -118,7 +118,7 @@ resource "aws_iam_policy" "retrieval_policy" {
             {
         Sid      = "S3ReadDocuments"
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject"]
+        Action   = ["s3:GetObject"]
         Resource = ["${aws_s3_bucket.rag_documents.arn}/*"]
       },
 	  {

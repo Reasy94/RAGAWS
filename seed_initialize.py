@@ -103,7 +103,7 @@ def seed():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS query_cache (
                 id SERIAL PRIMARY KEY,
-                query_text TEXT NOT NULL,
+                query_text TEXT NOT NULL UNIQUE,
                 answer TEXT,
                 sources JSONB,
                 query_embedding VECTOR(1024),
@@ -115,13 +115,15 @@ def seed():
             CREATE TABLE IF NOT EXISTS queries_history (
                 id SERIAL PRIMARY KEY,
                 session_id TEXT,
-                query TEXT NOT NULL,
+                query TEXT,
                 answer TEXT,
                 sources JSONB,
                 latency_ms INTEGER,
                 cache_hit BOOLEAN DEFAULT FALSE,
                 feedback BOOLEAN DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
+                created_at TIMESTAMP DEFAULT NOW(),
+                is_summary BOOLEAN DEFAULT FALSE,
+                summary TEXT
             );
         """)
 
