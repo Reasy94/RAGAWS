@@ -2,7 +2,10 @@ import { useState, useRef, useEffect } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL;
 const UPLOAD_LAMBDA_URL = import.meta.env.VITE_UPLOAD_URL;
-const FEEDBACK_URL = import.meta.env.VITE_API_URL?.replace("/query", "/feedback");
+const FEEDBACK_URL = import.meta.env.VITE_API_URL?.replace(
+  "/query",
+  "/feedback",
+);
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:wght@600&display=swap');
@@ -318,51 +321,102 @@ const styles = `
 `;
 
 const ChatIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
 
 const UploadIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="17 8 12 3 7 8"/>
-    <line x1="12" y1="3" x2="12" y2="15"/>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" y1="3" x2="12" y2="15" />
   </svg>
 );
 
 const SendIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="22" y1="2" x2="11" y2="13"/>
-    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <line x1="22" y1="2" x2="11" y2="13" />
+    <polygon points="22 2 15 22 11 13 2 9 22 2" />
   </svg>
 );
 
 const XIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18"/>
-    <line x1="6" y1="6" x2="18" y2="18"/>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
   </svg>
 );
 
 const ThumbUp = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
-    <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" />
+    <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
   </svg>
 );
 
 const ThumbDown = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
-    <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z" />
+    <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
   </svg>
 );
 
 const DocIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-    <polyline points="14 2 14 8 20 8"/>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    width="16"
+    height="16"
+  >
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
   </svg>
 );
 
@@ -392,10 +446,20 @@ function FeedbackButtons({ queryId }) {
   return (
     <div className="feedback-row">
       <span className="feedback-hint">useful?</span>
-      <button className={`fb-btn ${vote === "up" ? "voted" : ""}`} onClick={() => handleVote("up")} disabled={!!vote} title="Helpful">
+      <button
+        className={`fb-btn ${vote === "up" ? "voted" : ""}`}
+        onClick={() => handleVote("up")}
+        disabled={!!vote}
+        title="Helpful"
+      >
         <ThumbUp />
       </button>
-      <button className={`fb-btn ${vote === "down" ? "voted" : ""}`} onClick={() => handleVote("down")} disabled={!!vote} title="Not helpful">
+      <button
+        className={`fb-btn ${vote === "down" ? "voted" : ""}`}
+        onClick={() => handleVote("down")}
+        disabled={!!vote}
+        title="Not helpful"
+      >
         <ThumbDown />
       </button>
       {vote && <span className="fb-thanks">recorded</span>}
@@ -425,7 +489,7 @@ function ChatPage() {
   const send = async () => {
     if (!input.trim() || loading) return;
     const q = input.trim();
-    setMessages(p => [...p, { role: "user", content: q }]);
+    setMessages((p) => [...p, { role: "user", content: q }]);
     setInput("");
     if (taRef.current) taRef.current.style.height = "auto";
     setLoading(true);
@@ -437,21 +501,27 @@ function ChatPage() {
         body: JSON.stringify({ query: q, session_id: sessionId.current }),
       });
       const data = await res.json();
-      setMessages(p => [...p, {
-        role: "assistant",
-        id: Date.now().toString(),
-        query_id: data.query_id || null,
-        content: data.response || data.message || JSON.stringify(data),
-        sources: data.sources || [],
-        cached: data.cached || false,
-      }]);
+      setMessages((p) => [
+        ...p,
+        {
+          role: "assistant",
+          id: Date.now().toString(),
+          query_id: data.query_id || null,
+          content: data.response || data.message || JSON.stringify(data),
+          sources: data.sources || [],
+          cached: data.cached || false,
+        },
+      ]);
     } catch {
-      setMessages(p => [...p, {
-        role: "assistant",
-        id: Date.now().toString(),
-        content: "Connection error. Please check your API configuration.",
-        error: true,
-      }]);
+      setMessages((p) => [
+        ...p,
+        {
+          role: "assistant",
+          id: Date.now().toString(),
+          content: "Connection error. Please check your API configuration.",
+          error: true,
+        },
+      ]);
     }
     setLoading(false);
   };
@@ -464,11 +534,19 @@ function ChatPage() {
           <div className="topbar-sep" />
           <span className="topbar-label">document intelligence</span>
           <div className="topbar-sep" />
-          <span className="topbar-title" style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}>
+          <span
+            className="topbar-title"
+            style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}
+          >
             {sessionId.current.slice(0, 8)}
           </span>
         </div>
-        <span className="topbar-label" style={{ color: "var(--amber)", fontSize: "10px" }}>RAG · V3</span>
+        <span
+          className="topbar-label"
+          style={{ color: "var(--amber)", fontSize: "10px" }}
+        >
+          RAG · V3
+        </span>
       </div>
 
       <div className="messages">
@@ -481,36 +559,44 @@ function ChatPage() {
         ) : (
           messages.map((msg, i) => (
             <div key={i} className={`msg ${msg.role}`}>
-              <div className="msg-avatar">{msg.role === "user" ? "U" : "AI"}</div>
+              <div className="msg-avatar">
+                {msg.role === "user" ? "U" : "AI"}
+              </div>
               <div className="msg-body">
                 <div className="msg-bubble">
                   {msg.content}
                   {msg.cached && <span className="cached-badge">↺ cached</span>}
                   {msg.sources?.length > 0 && (
                     <div className="msg-sources">
+                      {msg.sources.some((s) => s.image_url) && (
+                        <div className="source-images-row">
+                          {msg.sources
+                            .filter((s) => s.image_url)
+                            .map((s, j) => (
+                              <img
+                                key={j}
+                                src={s.image_url}
+                                alt={`${s.chunk_type} from ${s.file_name} p.${s.page_number}`}
+                                className="source-image"
+                                onClick={() =>
+                                  window.open(s.image_url, "_blank")
+                                }
+                              />
+                            ))}
+                        </div>
+                      )}
                       <div className="source-pills-row">
                         {msg.sources.map((s, j) => (
                           <span key={j} className="source-pill">
                             {s.file_name} · p.{s.page_number}
                             {s.chunk_type !== "TEXT" && (
-                              <span className="source-type">{s.chunk_type}</span>
+                              <span className="source-type">
+                                {s.chunk_type}
+                              </span>
                             )}
                           </span>
                         ))}
                       </div>
-                      {msg.sources.some(s => s.image_url) && (
-                        <div className="source-images-row">
-                          {msg.sources.filter(s => s.image_url).map((s, j) => (
-                            <img
-                              key={j}
-                              src={s.image_url}
-                              alt={`${s.chunk_type} from ${s.file_name} p.${s.page_number}`}
-                              className="source-image"
-                              onClick={() => window.open(s.image_url, "_blank")}
-                            />
-                          ))}
-                        </div>
-                      )}
                     </div>
                   )}
                   {msg.role === "assistant" && !msg.error && (
@@ -525,9 +611,9 @@ function ChatPage() {
           <div className="msg assistant">
             <div className="msg-avatar">AI</div>
             <div className="typing">
-              <div className="dot"/>
-              <div className="dot"/>
-              <div className="dot"/>
+              <div className="dot" />
+              <div className="dot" />
+              <div className="dot" />
             </div>
           </div>
         )}
@@ -541,8 +627,11 @@ function ChatPage() {
             className="chat-input"
             placeholder="Query your financial documents..."
             value={input}
-            onChange={e => { setInput(e.target.value); resize(); }}
-            onKeyDown={e => {
+            onChange={(e) => {
+              setInput(e.target.value);
+              resize();
+            }}
+            onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 send();
@@ -550,7 +639,11 @@ function ChatPage() {
             }}
             rows={1}
           />
-          <button className="send-btn" onClick={send} disabled={!input.trim() || loading}>
+          <button
+            className="send-btn"
+            onClick={send}
+            disabled={!input.trim() || loading}
+          >
             <SendIcon />
           </button>
         </div>
@@ -565,10 +658,10 @@ function UploadPage() {
   const inputRef = useRef(null);
 
   const addFiles = (raw) => {
-    const pdfs = Array.from(raw).filter(f => f.type === "application/pdf");
-    setFiles(p => [
+    const pdfs = Array.from(raw).filter((f) => f.type === "application/pdf");
+    setFiles((p) => [
       ...p,
-      ...pdfs.map(f => ({
+      ...pdfs.map((f) => ({
         file: f,
         id: crypto.randomUUID(),
         status: "pending",
@@ -577,16 +670,21 @@ function UploadPage() {
     ]);
   };
 
-  const remove = (id) => setFiles(p => p.filter(f => f.id !== id));
+  const remove = (id) => setFiles((p) => p.filter((f) => f.id !== id));
 
   const uploadAll = async () => {
-    for (const item of files.filter(f => f.status === "pending")) {
-      setFiles(p => p.map(f => f.id === item.id ? { ...f, status: "uploading" } : f));
+    for (const item of files.filter((f) => f.status === "pending")) {
+      setFiles((p) =>
+        p.map((f) => (f.id === item.id ? { ...f, status: "uploading" } : f)),
+      );
       try {
         const res = await fetch(UPLOAD_LAMBDA_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: item.file.name, content_type: "application/pdf" }),
+          body: JSON.stringify({
+            filename: item.file.name,
+            content_type: "application/pdf",
+          }),
         });
         const { upload_url } = await res.json();
         await fetch(upload_url, {
@@ -594,18 +692,27 @@ function UploadPage() {
           body: item.file,
           headers: { "Content-Type": "application/pdf" },
         });
-        setFiles(p => p.map(f => f.id === item.id ? { ...f, status: "done", progress: 100 } : f));
+        setFiles((p) =>
+          p.map((f) =>
+            f.id === item.id ? { ...f, status: "done", progress: 100 } : f,
+          ),
+        );
       } catch {
-        setFiles(p => p.map(f => f.id === item.id ? { ...f, status: "error" } : f));
+        setFiles((p) =>
+          p.map((f) => (f.id === item.id ? { ...f, status: "error" } : f)),
+        );
       }
     }
   };
 
-  const pendingCount = files.filter(f => f.status === "pending").length;
+  const pendingCount = files.filter((f) => f.status === "pending").length;
 
   return (
     <div className="upload-page">
-      <div className="topbar" style={{ margin: "-36px -44px 32px", padding: "0 44px" }}>
+      <div
+        className="topbar"
+        style={{ margin: "-36px -44px 32px", padding: "0 44px" }}
+      >
         <div className="topbar-left">
           <div className="status-dot" />
           <div className="topbar-sep" />
@@ -620,29 +727,51 @@ function UploadPage() {
 
       <div
         className={`drop-zone ${drag ? "drag" : ""}`}
-        onDragOver={e => { e.preventDefault(); setDrag(true); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
         onDragLeave={() => setDrag(false)}
-        onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          addFiles(e.dataTransfer.files);
+        }}
         onClick={() => inputRef.current?.click()}
       >
         <div className="drop-icon">⊕</div>
         <div className="drop-title">Drop PDF files here</div>
-        <div className="drop-sub">or <span>browse files</span> from your machine</div>
-        <input ref={inputRef} type="file" accept=".pdf" multiple onChange={e => addFiles(e.target.files)} />
+        <div className="drop-sub">
+          or <span>browse files</span> from your machine
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf"
+          multiple
+          onChange={(e) => addFiles(e.target.files)}
+        />
       </div>
 
       {files.length > 0 && (
         <div className="file-list">
-          <div className="file-list-label">{files.length} file{files.length !== 1 ? "s" : ""} queued</div>
-          {files.map(item => (
+          <div className="file-list-label">
+            {files.length} file{files.length !== 1 ? "s" : ""} queued
+          </div>
+          {files.map((item) => (
             <div key={item.id} className={`file-item ${item.status}`}>
-              <div className="file-icon"><DocIcon /></div>
+              <div className="file-icon">
+                <DocIcon />
+              </div>
               <div className="file-info">
                 <div className="file-name">{item.file.name}</div>
                 <div className="file-meta">{formatBytes(item.file.size)}</div>
                 {item.status === "uploading" && (
                   <div className="progress-wrap">
-                    <div className="progress-bar" style={{ width: item.progress + "%" }} />
+                    <div
+                      className="progress-bar"
+                      style={{ width: item.progress + "%" }}
+                    />
                   </div>
                 )}
               </div>
@@ -660,8 +789,13 @@ function UploadPage() {
             </div>
           ))}
           <div className="action-row">
-            <button className="upload-btn" onClick={uploadAll} disabled={pendingCount === 0}>
-              Ingest {pendingCount > 0 ? pendingCount : ""} {pendingCount === 1 ? "file" : "files"}
+            <button
+              className="upload-btn"
+              onClick={uploadAll}
+              disabled={pendingCount === 0}
+            >
+              Ingest {pendingCount > 0 ? pendingCount : ""}{" "}
+              {pendingCount === 1 ? "file" : "files"}
             </button>
           </div>
         </div>
