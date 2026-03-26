@@ -72,11 +72,11 @@ def store_cache(
     try:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO rag.query_cache (query_text, query_embedding, response, sources)
+            INSERT INTO rag.query_cache (query_text, query_embedding, answer, sources)
             VALUES (%s, %s::vector, %s, %s)
             ON CONFLICT (query_text) DO UPDATE SET
                 query_embedding = EXCLUDED.query_embedding,
-                response        = EXCLUDED.response,
+                answer        = EXCLUDED.answer,
                 sources         = EXCLUDED.sources,
                 created_at      = CURRENT_TIMESTAMP
         """, (query_text, query_embedding, response, json.dumps(sources)))
@@ -237,6 +237,7 @@ def _generate_response(query: str, chunks: list[dict], window_context: str = "")
             "You are an expert financial analyst assistant specializing in World Bank "
             "economic reports specifically the Global Economic Prospects (GEP) and Commodity Markets Outlook (CMO) series. "
             "Answer questions based strictly on the provided context. If the context lacks sufficient information, say so explicitly. "
+            "When relevant data comes from a figure or table, mention the page number it appears on. "
             "Write in a clear and professional tone."
         )}],
         "messages": [{
@@ -250,7 +251,7 @@ def _generate_response(query: str, chunks: list[dict], window_context: str = "")
                 )
             }]
         }],
-        "inferenceConfig": {"max_new_tokens": 1024},
+        "inferenceConfig": {"max_new_tokens": 2048},
     })
 
     response = bedrock.invoke_model(
@@ -498,6 +499,11 @@ def _build_window_context(history: dict) -> str:
         parts.append(f"Recent conversation:\n\n{recent_text}")
 
     return "\n\n---\n\n".join(parts)
+
+def _enrich_sources(sources: list[dict]) -> list[dict]:
+    for s in sources:
+        s["image_url"] = _get_presigned_url(s.get("s3_path"))
+    return sources
 # ══════════════════════════════════════════════════════════════════════════════
 # ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -530,6 +536,7 @@ def lambda_handler(event, context):
         # Step 2 — Semantic cache check
         cached = check_cache(query_embedding)
         if cached:
+            cached["sources"] = _enrich_sources(cached["sources"])
             _store_query_history(
                 session_id = session_id,
                 query      = query,
@@ -592,11 +599,10 @@ def lambda_handler(event, context):
                     "file_name":   file_name,
                     "page_number": c["page_number"],
                     "chunk_type":  c["chunk_type"],
-                    "snippet":     c["content"][:200],
-                    "image_url":   _get_presigned_url(c.get("s3_path")) if c["chunk_type"] in ("FIGURE", "TABLE") else None,
+                    "s3_path":     c.get("s3_path") if c["chunk_type"] in ("FIGURE", "TABLE") else None,
                 })
 
-        # Step 9 — Store cache
+        # Step 9 — con s3_path
         store_cache(query, query_embedding, response_text, sources)
 
         # Step 10 - Store History
@@ -612,7 +618,7 @@ def lambda_handler(event, context):
 
         return _api_response(200, {
             "response": response_text,
-            "sources":  sources,
+            "sources":  _enrich_sources(sources),
             "cached":   False,
             "query_id": query_id,
         })

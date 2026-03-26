@@ -1128,16 +1128,17 @@ def save_chunks_to_rds(chunks: list[dict]):
     try:
         cur = conn.cursor()
         cur.executemany("""
-            INSERT INTO chunks (file_hash, page_number, chunk_id, chunk_type, content, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO chunks (file_hash, page_number, chunk_id, chunk_type, content, embedding, s3_path)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (file_hash, page_number, chunk_id)
             DO UPDATE SET
                 chunk_type = EXCLUDED.chunk_type,
                 content    = EXCLUDED.content,
-                embedding  = EXCLUDED.embedding
+                embedding  = EXCLUDED.embedding,
+                s3_path    = EXCLUDED.s3_path
         """, [
             (c["file_hash"], c["page_num"], c["chunk_id"],
-             c["chunk_type"], c["content"], c["vector"])
+             c["chunk_type"], c["content"], c["vector"], c.get("s3_path"))
             for c in chunks
         ])
         conn.commit()

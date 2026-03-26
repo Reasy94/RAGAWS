@@ -145,16 +145,26 @@ const styles = `
   }
 
   .msg-sources {
-    margin-top: 10px; padding-top: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
     border-top: 1px solid var(--border);
-    display: flex; flex-wrap: wrap; gap: 8px;
-  }
-
-  .source-item {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-width: 100%;
+    gap: 10px;
+  }
+
+  .source-pills-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .source-images-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    width: 100%;
   }
 
   .source-pill {
@@ -177,7 +187,7 @@ const styles = `
   }
 
   .source-image {
-    max-width: 100%;
+    max-width: 48%;
     max-height: 300px;
     object-fit: contain;
     border: 1px solid var(--border-mid);
@@ -478,24 +488,29 @@ function ChatPage() {
                   {msg.cached && <span className="cached-badge">↺ cached</span>}
                   {msg.sources?.length > 0 && (
                     <div className="msg-sources">
-                      {msg.sources.map((s, j) => (
-                        <div key={j} className="source-item">
-                          <span className="source-pill">
+                      <div className="source-pills-row">
+                        {msg.sources.map((s, j) => (
+                          <span key={j} className="source-pill">
                             {s.file_name} · p.{s.page_number}
                             {s.chunk_type !== "TEXT" && (
                               <span className="source-type">{s.chunk_type}</span>
                             )}
                           </span>
-                          {s.image_url && (
+                        ))}
+                      </div>
+                      {msg.sources.some(s => s.image_url) && (
+                        <div className="source-images-row">
+                          {msg.sources.filter(s => s.image_url).map((s, j) => (
                             <img
+                              key={j}
                               src={s.image_url}
                               alt={`${s.chunk_type} from ${s.file_name} p.${s.page_number}`}
                               className="source-image"
                               onClick={() => window.open(s.image_url, "_blank")}
                             />
-                          )}
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
                   {msg.role === "assistant" && !msg.error && (

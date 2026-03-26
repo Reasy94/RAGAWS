@@ -1,8 +1,16 @@
-.source-item {
+.source-pills-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.source-images-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
 }
 
 .source-type {
@@ -10,13 +18,12 @@
   padding: 1px 5px;
   font-size: 9px;
   background: rgba(200,162,85,0.2);
-  border-radius: 2px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .source-image {
-  max-width: 100%;
+  max-width: 48%;
   max-height: 300px;
   object-fit: contain;
   border: 1px solid var(--border-mid);
