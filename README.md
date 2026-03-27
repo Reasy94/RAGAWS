@@ -12,7 +12,7 @@ End-to-end AI engineering: from raw PDF ingestion to a React frontend, fully dep
 
 
 ![Chat Interface](docs/Screenshot1.png)
-![Chat Interface](docs/Screenshot2png)
+![Chat Interface](docs/Screenshot2.png)
 ![Chat Interface](docs/Screenshot3.png)
 
 ---
