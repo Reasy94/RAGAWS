@@ -713,6 +713,7 @@ def lambda_handler(event, context):
             "sources":  _enrich_sources(sources),
             "cached":   False,
             "query_id": query_id,
+            "latency_ms": latency_ms,
         })
 
     except Exception as e:

@@ -677,6 +677,7 @@ function ChatPage() {
           content: data.response || data.message || JSON.stringify(data),
           sources: data.sources || [],
           cached: data.cached || false,
+          latency_ms: data.latency_ms || null, 
         },
       ]);
     } catch {
@@ -733,6 +734,11 @@ function ChatPage() {
                 <div className="msg-bubble">
                   {msg.content}
                   {msg.cached && <span className="cached-badge">↺ cached</span>}
+                  {msg.latency_ms && (
+                    <span className="cached-badge" style={{ marginLeft: 4 }}>
+                      {(msg.latency_ms / 1000).toFixed(1)}s
+                    </span>
+                  )}
                   {msg.sources?.length > 0 && (
                     <div className="msg-sources">
                       {msg.sources.some((s) => s.image_url) && (
