@@ -7,7 +7,6 @@ variable "project_name" {
 variable "rds_rag_username" {
   description = "RDS master username"
   type        = string
-  default     = "postgres"
 }
 
 variable "aws_profile" {
@@ -24,4 +23,15 @@ variable "my_ip" {
 variable "bastion_public_key" {
   description = "Public SSH key for bastion host access"
   type        = string
+}
+
+variable "github_repo_url" {
+  description = "GitHub repository URL for CodeBuild"
+  type        = string
+}
+
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
+  default     = "ap-southeast-1"
 }

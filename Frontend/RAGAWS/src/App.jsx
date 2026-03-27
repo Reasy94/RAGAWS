@@ -4,7 +4,11 @@ const API_URL = import.meta.env.VITE_API_URL;
 const UPLOAD_LAMBDA_URL = import.meta.env.VITE_UPLOAD_URL;
 const FEEDBACK_URL = import.meta.env.VITE_API_URL?.replace(
   "/query",
-  "/feedback",
+  "/feedback"
+);
+const STATS_URL = import.meta.env.VITE_API_URL?.replace(
+    "/query",
+    "/stats"
 );
 
 const styles = `
@@ -318,6 +322,162 @@ const styles = `
   }
   .remove-btn:hover { border-color: var(--error); color: var(--error); }
   .remove-btn svg { width: 10px; height: 10px; }
+
+  .dashboard-page {
+    flex: 1; padding: 0; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    display: flex; flex-direction: column;
+  }
+
+  .dash-topbar {
+    padding: 0 28px; height: 52px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg-surface); flex-shrink: 0;
+  }
+
+  .dash-body { padding: 28px; display: flex; flex-direction: column; gap: 24px; }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .kpi-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    padding: 16px 18px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+
+  .kpi-label {
+    font-size: 10px; font-family: var(--font-mono);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .kpi-value {
+    font-size: 28px; font-weight: 600;
+    color: var(--text-primary); letter-spacing: -0.02em; line-height: 1;
+  }
+
+  .kpi-sub {
+    font-size: 11px; font-family: var(--font-mono);
+    color: var(--text-dim);
+  }
+
+  .kpi-accent { color: var(--amber); }
+
+  .mid-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 16px;
+  }
+
+  .dash-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .dash-card-label {
+    font-size: 10px; font-family: var(--font-mono);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .chart-wrap { width: 100%; height: 140px; }
+
+  .sessions-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .session-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+  }
+
+  .session-id {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--amber-text);
+  }
+
+  .session-count {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .session-date {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .recent-table-wrap { overflow-x: auto; }
+
+  .recent-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .recent-table th {
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-dim); padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left; white-space: nowrap;
+  }
+
+  .recent-table td {
+    padding: 10px 10px; border-bottom: 1px solid var(--border);
+    color: var(--text-secondary); vertical-align: top;
+  }
+
+  .recent-table tr:last-child td { border-bottom: none; }
+  .recent-table tr:hover td { background: var(--bg-card); }
+
+  .td-query {
+    max-width: 320px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    color: var(--text-primary) !important;
+  }
+
+  .td-answer {
+    max-width: 260px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .badge {
+    display: inline-block; padding: 1px 6px;
+    font-family: var(--font-mono); font-size: 10px;
+    border: 1px solid; white-space: nowrap;
+  }
+
+  .badge-hit { color: var(--amber-text); background: var(--amber-dim); border-color: rgba(200,162,85,0.2); }
+  .badge-miss { color: var(--text-dim); background: transparent; border-color: var(--border); }
+  .badge-up { color: var(--success); background: rgba(61,153,112,0.1); border-color: rgba(61,153,112,0.2); }
+  .badge-down { color: var(--error); background: rgba(192,57,43,0.1); border-color: rgba(192,57,43,0.2); }
+  .badge-none { color: var(--text-dim); background: transparent; border-color: var(--border); }
+
+  .dash-loading {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; color: var(--text-dim);
+  }
+
+  .dash-loading-label {
+    font-family: var(--font-mono); font-size: 11px;
+    letter-spacing: 0.1em; color: var(--text-dim);
+  }
+
+  .refresh-btn {
+    padding: 4px 12px;
+    background: transparent; border: 1px solid var(--border-mid);
+    color: var(--text-secondary); font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .refresh-btn:hover { border-color: rgba(200,162,85,0.4); color: var(--amber-text); }
 `;
 
 const ChatIcon = () => (
@@ -401,6 +561,13 @@ const ThumbDown = () => (
   >
     <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z" />
     <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+  </svg>
+);
+
+const DashboardIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
   </svg>
 );
 
@@ -804,6 +971,257 @@ function UploadPage() {
   );
 }
 
+// ── SVG Sparkline chart component ─────────────────────────────────────────────
+function SparklineChart({ data }) {
+  if (!data || data.length === 0) return (
+    <div style={{ height: 140, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>no data</span>
+    </div>
+  );
+
+  const W = 600, H = 120, PAD = { top: 10, right: 10, bottom: 30, left: 30 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+
+  const maxVal = Math.max(...data.map(d => d.count), 1);
+  const xStep = innerW / Math.max(data.length - 1, 1);
+
+  const points = data.map((d, i) => ({
+    x: PAD.left + i * xStep,
+    y: PAD.top + innerH - (d.count / maxVal) * innerH,
+    ...d,
+  }));
+
+  const polyline = points.map(p => `${p.x},${p.y}`).join(" ");
+  const area = `M${points[0].x},${PAD.top + innerH} ` +
+    points.map(p => `L${p.x},${p.y}`).join(" ") +
+    ` L${points[points.length - 1].x},${PAD.top + innerH} Z`;
+
+  // Show max 7 x-axis labels
+  const labelStep = Math.ceil(data.length / 7);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 140 }} preserveAspectRatio="none">
+      {/* Grid lines */}
+      {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
+        const y = PAD.top + innerH - t * innerH;
+        return (
+          <line key={i}
+            x1={PAD.left} y1={y} x2={PAD.left + innerW} y2={y}
+            stroke="rgba(255,255,255,0.04)" strokeWidth="1"
+          />
+        );
+      })}
+
+      {/* Area fill */}
+      <path d={area} fill="rgba(200,162,85,0.08)" />
+
+      {/* Line */}
+      <polyline points={polyline} fill="none" stroke="#c8a255" strokeWidth="1.5" />
+
+      {/* Dots */}
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="#c8a255" />
+      ))}
+
+      {/* X axis labels */}
+      {points.filter((_, i) => i % labelStep === 0 || i === points.length - 1).map((p, i) => (
+        <text key={i}
+          x={p.x} y={H - 6}
+          textAnchor="middle"
+          fontSize="9"
+          fill="rgba(139,152,184,0.5)"
+          fontFamily="JetBrains Mono, monospace"
+        >
+          {p.day?.slice(5)}
+        </text>
+      ))}
+
+      {/* Y axis max label */}
+      <text
+        x={PAD.left - 4} y={PAD.top + 4}
+        textAnchor="end" fontSize="9"
+        fill="rgba(139,152,184,0.5)"
+        fontFamily="JetBrains Mono, monospace"
+      >
+        {maxVal}
+      </text>
+    </svg>
+  );
+}
+
+// ── Dashboard Page component ───────────────────────────────────────────────────
+function DashboardPage() {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+
+  const fetchStats = async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await fetch(STATS_URL);
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      setStats(data);
+    } catch {
+      setError(true);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchStats(); }, []);
+
+  const kpi = stats?.kpi || {};
+  const daily = stats?.daily || [];
+  const recent = stats?.recent || [];
+  const sessions = stats?.sessions || [];
+
+  return (
+    <div className="dashboard-page">
+      <div className="dash-topbar">
+        <div className="topbar-left">
+          <div className={`status-dot ${loading ? "loading" : ""}`} />
+          <div className="topbar-sep" />
+          <span className="topbar-label">system dashboard</span>
+        </div>
+        <button className="refresh-btn" onClick={fetchStats} disabled={loading}>
+          {loading ? "loading..." : "↺ refresh"}
+        </button>
+      </div>
+
+      {loading && !stats && (
+        <div className="dash-loading">
+          <div className="dot" style={{ width: 6, height: 6 }} />
+          <span className="dash-loading-label">fetching stats...</span>
+        </div>
+      )}
+
+      {error && !loading && (
+        <div className="dash-loading">
+          <span className="dash-loading-label">failed to load — check API</span>
+        </div>
+      )}
+
+      {stats && (
+        <div className="dash-body">
+
+          {/* KPI Cards */}
+          <div className="kpi-grid">
+            <div className="kpi-card">
+              <div className="kpi-label">total queries</div>
+              <div className="kpi-value">{kpi.total_queries ?? "—"}</div>
+              <div className="kpi-sub">all time</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">avg latency</div>
+              <div className="kpi-value">
+                {kpi.avg_latency_ms != null ? (kpi.avg_latency_ms / 1000).toFixed(1) : "—"}
+                <span style={{ fontSize: 14, color: "var(--text-dim)", marginLeft: 4 }}>s</span>
+              </div>
+              <div className="kpi-sub">per query</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">cache hit rate</div>
+              <div className="kpi-value kpi-accent">
+                {kpi.cache_hit_pct != null ? kpi.cache_hit_pct : "—"}
+                <span style={{ fontSize: 14, marginLeft: 2 }}>%</span>
+              </div>
+              <div className="kpi-sub">semantic cache</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">positive feedback</div>
+              <div className="kpi-value">
+                {kpi.positive_feedback_pct != null ? kpi.positive_feedback_pct : "—"}
+                <span style={{ fontSize: 14, color: "var(--text-dim)", marginLeft: 2 }}>%</span>
+              </div>
+              <div className="kpi-sub">thumbs up / total</div>
+            </div>
+          </div>
+
+          {/* Chart + Sessions */}
+          <div className="mid-grid">
+            <div className="dash-card">
+              <div className="dash-card-label">queries · last 30 days</div>
+              <div className="chart-wrap">
+                <SparklineChart data={daily} />
+              </div>
+            </div>
+
+            <div className="dash-card">
+              <div className="dash-card-label">top sessions</div>
+              <div className="sessions-list">
+                {sessions.length === 0 && (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>no sessions</span>
+                )}
+                {sessions.map((s, i) => (
+                  <div key={i} className="session-row">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span className="session-id">{s.session_id}...</span>
+                      <span className="session-date">{s.last_activity?.slice(0, 10)}</span>
+                    </div>
+                    <span className="session-count">{s.query_count} q</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Queries */}
+          <div className="dash-card">
+            <div className="dash-card-label">recent queries</div>
+            <div className="recent-table-wrap">
+              <table className="recent-table">
+                <thead>
+                  <tr>
+                    <th>query</th>
+                    <th>answer</th>
+                    <th>latency</th>
+                    <th>cache</th>
+                    <th>feedback</th>
+                    <th>time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent.length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11 }}>no queries yet</td></tr>
+                  )}
+                  {recent.map((r, i) => (
+                    <tr key={i}>
+                      <td className="td-query" title={r.query}>{r.query}</td>
+                      <td className="td-answer" title={r.answer}>{r.answer}</td>
+                      <td style={{ fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
+                        {r.latency_ms != null ? (r.latency_ms / 1000).toFixed(1) + "s" : "—"}
+                      </td>
+                      <td>
+                        <span className={`badge ${r.cache_hit ? "badge-hit" : "badge-miss"}`}>
+                          {r.cache_hit ? "hit" : "miss"}
+                        </span>
+                      </td>
+                      <td>
+                        {r.feedback === true && <span className="badge badge-up">↑ up</span>}
+                        {r.feedback === false && <span className="badge badge-down">↓ down</span>}
+                        {r.feedback === null && <span className="badge badge-none">—</span>}
+                      </td>
+                      <td style={{ fontFamily: "var(--font-mono)", fontSize: 10, whiteSpace: "nowrap", color: "var(--text-dim)" }}>
+                        {r.created_at?.slice(0, 16).replace("T", " ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
 export default function App() {
   const [page, setPage] = useState("chat");
 
@@ -822,15 +1240,15 @@ export default function App() {
             <ChatIcon />
           </button>
           <button
-            className={`nav-btn ${page === "upload" ? "active" : ""}`}
-            onClick={() => setPage("upload")}
-            title="Ingest"
+            className={`nav-btn ${page === "dashboard" ? "active" : ""}`}
+            onClick={() => setPage("dashboard")}
+            title="Dashboard"
           >
-            <UploadIcon />
+            <DashboardIcon />
           </button>
         </nav>
         <main className="main">
-          {page === "chat" ? <ChatPage /> : <UploadPage />}
+          {page === "chat" ? <ChatPage /> : <DashboardPage />}
         </main>
       </div>
     </>

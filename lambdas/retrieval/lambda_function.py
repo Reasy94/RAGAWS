@@ -406,7 +406,6 @@ def _load_session_history(session_id: str) -> dict:
     try:
         cur = conn.cursor()
 
-        # Trova l'ultimo summary
         cur.execute("""
             SELECT id, summary FROM rag.queries_history
             WHERE session_id = %s AND is_summary = TRUE
@@ -417,7 +416,6 @@ def _load_session_history(session_id: str) -> dict:
         last_summary_id = summary_row[0] if summary_row else 0
         summary_text    = summary_row[1] if summary_row else None
 
-        # Carica le query normali dopo l'ultimo summary
         cur.execute("""
             SELECT query, answer FROM rag.queries_history
             WHERE session_id = %s
@@ -506,6 +504,96 @@ def _enrich_sources(sources: list[dict]) -> list[dict]:
         {**s, "image_url": _get_presigned_url(s.get("s3_path"))}
         for s in sources
     ]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD STATS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _handle_stats(event) -> dict:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE is_summary = FALSE)                                          AS total_queries,
+                ROUND(AVG(latency_ms) FILTER (WHERE is_summary = FALSE))                            AS avg_latency_ms,
+                ROUND(100.0 * COUNT(*) FILTER (WHERE cache_hit = TRUE AND is_summary = FALSE) /
+                      NULLIF(COUNT(*) FILTER (WHERE is_summary = FALSE), 0), 1)                     AS cache_hit_pct,
+                ROUND(100.0 * COUNT(*) FILTER (WHERE feedback = TRUE) /
+                      NULLIF(COUNT(*) FILTER (WHERE feedback IS NOT NULL), 0), 1)                   AS positive_feedback_pct
+            FROM rag.queries_history
+        """)
+        kpi = cur.fetchone()
+
+        cur.execute("""
+            SELECT DATE(created_at) AS day, COUNT(*) AS count
+            FROM rag.queries_history
+            WHERE is_summary = FALSE
+              AND created_at > NOW() - INTERVAL '30 days'
+            GROUP BY day
+            ORDER BY day ASC
+        """)
+        daily = [{"day": str(row[0]), "count": row[1]} for row in cur.fetchall()]
+
+        cur.execute("""
+            SELECT id, query, answer, latency_ms, cache_hit, feedback, created_at
+            FROM rag.queries_history
+            WHERE is_summary = FALSE
+            ORDER BY created_at DESC
+            LIMIT 20
+        """)
+        recent = [
+            {
+                "id":         row[0],
+                "query":      row[1],
+                "answer":     row[2][:200] if row[2] else None,
+                "latency_ms": row[3],
+                "cache_hit":  row[4],
+                "feedback":   row[5],
+                "created_at": str(row[6]),
+            }
+            for row in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT session_id, COUNT(*) AS query_count, MAX(created_at) AS last_activity
+            FROM rag.queries_history
+            WHERE is_summary = FALSE
+              AND session_id IS NOT NULL
+            GROUP BY session_id
+            ORDER BY query_count DESC
+            LIMIT 10
+        """)
+        sessions = [
+            {
+                "session_id":    row[0][:8],
+                "query_count":   row[1],
+                "last_activity": str(row[2]),
+            }
+            for row in cur.fetchall()
+        ]
+
+        return _api_response(200, {
+            "kpi": {
+                "total_queries":        kpi[0],
+                "avg_latency_ms":       kpi[1],
+                "cache_hit_pct":        kpi[2],
+                "positive_feedback_pct": kpi[3],
+            },
+            "daily":    daily,
+            "recent":   recent,
+            "sessions": sessions,
+        })
+
+    except Exception as e:
+        logger.error(f"Stats handler error: {e}")
+        return _api_response(500, {"error": "Internal server error"})
+    finally:
+        put_conn(conn)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -514,6 +602,8 @@ def lambda_handler(event, context):
     path = event.get("rawPath", "")
     if path == "/feedback":
         return _handle_feedback(event)
+    if path == "/stats":
+        return _handle_stats(event)
     try:
         raw_body = event.get("body")
         if raw_body is None:

@@ -73,3 +73,10 @@ resource "aws_apigatewayv2_route" "feedback" {
   target    = "integrations/${aws_apigatewayv2_integration.retrieval.id}"
 }
 
+# ─── APIGATEWAY: STATS ────────────────────────────────────────────────────────
+
+resource "aws_apigatewayv2_route" "stats" {
+  api_id    = aws_apigatewayv2_api.rag_api.id
+  route_key = "GET /stats"
+  target    = "integrations/${aws_apigatewayv2_integration.retrieval.id}"
+}
