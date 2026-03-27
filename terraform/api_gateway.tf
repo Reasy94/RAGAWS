@@ -7,7 +7,7 @@ resource "aws_apigatewayv2_api" "rag_api" {
 
   cors_configuration {
     allow_origins = ["*"]
-    allow_methods = ["POST", "OPTIONS"]
+    allow_methods = ["POST", "OPTIONS", "GET"]
     allow_headers = ["Content-Type"]
     max_age       = 300
   }

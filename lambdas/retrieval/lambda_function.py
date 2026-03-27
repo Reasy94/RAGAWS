@@ -577,11 +577,11 @@ def _handle_stats(event) -> dict:
 
         return _api_response(200, {
             "kpi": {
-                "total_queries":        kpi[0],
-                "avg_latency_ms":       kpi[1],
-                "cache_hit_pct":        kpi[2],
-                "positive_feedback_pct": kpi[3],
-            },
+                "total_queries":         int(kpi[0]) if kpi[0] is not None else 0,
+                "avg_latency_ms":        int(kpi[1]) if kpi[1] is not None else 0,
+                "cache_hit_pct":         float(kpi[2]) if kpi[2] is not None else 0.0,
+                "positive_feedback_pct": float(kpi[3]) if kpi[3] is not None else 0.0,
+            },  
             "daily":    daily,
             "recent":   recent,
             "sessions": sessions,

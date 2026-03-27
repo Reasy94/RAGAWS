@@ -7,7 +7,6 @@ PAGE_FLUSH_SIZE   = 20
 MAX_INPUT_CHARS   = 2048
 PRE_FIGURE_CONTEXT_CHARS = 300
 
-TITAN_MODEL_ID  = "amazon.titan-embed-text-v2:0"
 HAIKU_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0" #figure/table description
 RERANK_MODEL_ID = "cohere.rerank-v3-5:0" #reranking model
 COHERE_MODEL_ID = "cohere.embed-multilingual-v3" #embedding model
