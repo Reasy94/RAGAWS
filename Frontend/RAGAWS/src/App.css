@@ -356,17 +356,12 @@
 
   .kpi-accent { color: var(--amber); }
 
-  .mid-grid {
+  .dash-main-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 260px;
+    grid-template-columns: minmax(0, 1fr) 300px;
     gap: 16px;
-  }
-
-  .dash-card {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    padding: 18px 20px;
-    display: flex; flex-direction: column; gap: 14px;
+    flex: 1;
+    min-height: 0;
   }
 
   .dash-card-label {
@@ -400,8 +395,6 @@
     font-family: var(--font-mono); font-size: 10px;
     color: var(--text-dim);
   }
-
-  .recent-table-wrap { overflow-x: auto; }
 
   .recent-table {
     width: 100%; border-collapse: collapse;

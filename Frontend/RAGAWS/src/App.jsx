@@ -1,19 +1,14 @@
 import { useState, useRef, useEffect } from "react";
-import ReactMarkdown from 'react-markdown'
-import './App.css'
-
+import ReactMarkdown from "react-markdown";
+import "./App.css";
 
 const API_URL = import.meta.env.VITE_API_URL;
 const UPLOAD_LAMBDA_URL = import.meta.env.VITE_UPLOAD_URL;
 const FEEDBACK_URL = import.meta.env.VITE_API_URL?.replace(
   "/query",
-  "/feedback"
+  "/feedback",
 );
-const STATS_URL = import.meta.env.VITE_API_URL?.replace(
-    "/query",
-    "/stats"
-);
-
+const STATS_URL = import.meta.env.VITE_API_URL?.replace("/query", "/stats");
 
 const ChatIcon = () => (
   <svg
@@ -100,9 +95,18 @@ const ThumbDown = () => (
 );
 
 const DashboardIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="3" y="3" width="7" height="7" />
+    <rect x="14" y="3" width="7" height="7" />
+    <rect x="14" y="14" width="7" height="7" />
+    <rect x="3" y="14" width="7" height="7" />
   </svg>
 );
 
@@ -212,7 +216,7 @@ function ChatPage() {
           content: data.response || data.message || JSON.stringify(data),
           sources: data.sources || [],
           cached: data.cached || false,
-          latency_ms: data.latency_ms || null, 
+          latency_ms: data.latency_ms || null,
         },
       ]);
     } catch {
@@ -521,25 +525,28 @@ function SparklineChart({ data }) {
   useEffect(() => {
     if (!data || data.length === 0) return;
 
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
+    const script = document.createElement("script");
+    script.src =
+      "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
     script.onload = () => {
       if (chartRef.current) chartRef.current.destroy();
-      const ctx = canvasRef.current?.getContext('2d');
+      const ctx = canvasRef.current?.getContext("2d");
       if (!ctx) return;
 
       chartRef.current = new window.Chart(ctx, {
-        type: 'bar',
+        type: "bar",
         data: {
-          labels: data.map(d => d.day?.slice(5) || ''),
-          datasets: [{
-            data: data.map(d => d.count),
-            backgroundColor: 'rgba(200,162,85,0.25)',
-            borderColor: '#c8a255',
-            borderWidth: 1.5,
-            borderRadius: 2,
-            hoverBackgroundColor: 'rgba(200,162,85,0.45)',
-          }]
+          labels: data.map((d) => d.day?.slice(5) || ""),
+          datasets: [
+            {
+              data: data.map((d) => d.count),
+              backgroundColor: "rgba(200,162,85,0.25)",
+              borderColor: "#c8a255",
+              borderWidth: 1.5,
+              borderRadius: 2,
+              hoverBackgroundColor: "rgba(200,162,85,0.45)",
+            },
+          ],
         },
         options: {
           responsive: true,
@@ -547,54 +554,72 @@ function SparklineChart({ data }) {
           plugins: {
             legend: { display: false },
             tooltip: {
-              backgroundColor: '#1a2038',
-              titleColor: '#c8a255',
-              bodyColor: '#8b98b8',
-              borderColor: 'rgba(200,162,85,0.3)',
+              backgroundColor: "#1a2038",
+              titleColor: "#c8a255",
+              bodyColor: "#8b98b8",
+              borderColor: "rgba(200,162,85,0.3)",
               borderWidth: 1,
-              titleFont: { family: 'JetBrains Mono', size: 11 },
-              bodyFont: { family: 'JetBrains Mono', size: 11 },
+              titleFont: { family: "JetBrains Mono", size: 11 },
+              bodyFont: { family: "JetBrains Mono", size: 11 },
               callbacks: {
-                title: items => items[0].label,
-                label: item => `${item.raw} queries`,
-              }
-            }
+                title: (items) => items[0].label,
+                label: (item) => `${item.raw} queries`,
+              },
+            },
           },
           scales: {
             x: {
-              grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+              grid: { color: "rgba(255,255,255,0.04)", drawBorder: false },
               ticks: {
-                color: 'rgba(139,152,184,0.5)',
-                font: { family: 'JetBrains Mono', size: 9 },
+                color: "rgba(139,152,184,0.5)",
+                font: { family: "JetBrains Mono", size: 9 },
                 maxRotation: 0,
                 autoSkip: true,
                 maxTicksLimit: 8,
               },
-              border: { display: false }
+              border: { display: false },
             },
             y: {
-              grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+              grid: { color: "rgba(255,255,255,0.04)", drawBorder: false },
               ticks: {
-                color: 'rgba(139,152,184,0.5)',
-                font: { family: 'JetBrains Mono', size: 9 },
+                color: "rgba(139,152,184,0.5)",
+                font: { family: "JetBrains Mono", size: 9 },
                 maxTicksLimit: 4,
                 precision: 0,
               },
-              border: { display: false }
-            }
-          }
-        }
+              border: { display: false },
+            },
+          },
+        },
       });
     };
     document.head.appendChild(script);
-    return () => { chartRef.current?.destroy(); };
+    return () => {
+      chartRef.current?.destroy();
+    };
   }, [data]);
 
-  if (!data || data.length === 0) return (
-    <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>no data</span>
-    </div>
-  );
+  if (!data || data.length === 0)
+    return (
+      <div
+        style={{
+          height: 120,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            color: "var(--text-dim)",
+          }}
+        >
+          no data
+        </span>
+      </div>
+    );
 
   return (
     <div style={{ position: "relative", width: "100%", height: 120 }}>
@@ -608,7 +633,6 @@ function DashboardPage() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-
 
   const fetchStats = async () => {
     setLoading(true);
@@ -624,12 +648,14 @@ function DashboardPage() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchStats(); }, []);
+  useEffect(() => {
+    fetchStats();
+  }, []);
 
   const kpi = stats?.kpi || {};
   const daily = stats?.daily || [];
   const recent = stats?.recent || [];
-  const sessions = stats?.sessions || [];
+  const sessions = (stats?.sessions || []).slice(0, 3);
 
   return (
     <div className="dashboard-page">
@@ -659,7 +685,6 @@ function DashboardPage() {
 
       {stats && (
         <div className="dash-body">
-
           {/* KPI Cards */}
           <div className="kpi-grid">
             <div className="kpi-card">
@@ -670,8 +695,18 @@ function DashboardPage() {
             <div className="kpi-card">
               <div className="kpi-label">avg latency</div>
               <div className="kpi-value">
-                {kpi.avg_latency_ms != null ? (kpi.avg_latency_ms / 1000).toFixed(1) : "—"}
-                <span style={{ fontSize: 14, color: "var(--text-dim)", marginLeft: 4 }}>s</span>
+                {kpi.avg_latency_ms != null
+                  ? (kpi.avg_latency_ms / 1000).toFixed(1)
+                  : "—"}
+                <span
+                  style={{
+                    fontSize: 14,
+                    color: "var(--text-dim)",
+                    marginLeft: 4,
+                  }}
+                >
+                  s
+                </span>
               </div>
               <div className="kpi-sub">per query</div>
             </div>
@@ -686,15 +721,26 @@ function DashboardPage() {
             <div className="kpi-card">
               <div className="kpi-label">positive feedback</div>
               <div className="kpi-value">
-                {kpi.positive_feedback_pct != null ? kpi.positive_feedback_pct : "—"}
-                <span style={{ fontSize: 14, color: "var(--text-dim)", marginLeft: 2 }}>%</span>
+                {kpi.positive_feedback_pct != null
+                  ? kpi.positive_feedback_pct
+                  : "—"}
+                <span
+                  style={{
+                    fontSize: 14,
+                    color: "var(--text-dim)",
+                    marginLeft: 2,
+                  }}
+                >
+                  %
+                </span>
               </div>
               <div className="kpi-sub">thumbs up / total</div>
             </div>
           </div>
 
-          {/* Chart + Sessions */}
-          <div className="mid-grid">
+          {/* Layout: grafico a sinistra, sessioni + recent a destra */}
+          <div className="dash-main-grid">
+            {/* Colonna sinistra: solo grafico */}
             <div className="dash-card">
               <div className="dash-card-label">queries · last 30 days</div>
               <div className="chart-wrap">
@@ -702,105 +748,160 @@ function DashboardPage() {
               </div>
             </div>
 
-            <div className="dash-card">
-              <div className="dash-card-label">top sessions</div>
-              <div className="sessions-list">
-                {sessions.length === 0 && (
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>no sessions</span>
-                )}
-                {sessions.map((s, i) => (
-                  <div key={i} className="session-row">
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span className="session-id">{s.session_id}...</span>
-                      <span className="session-date">{s.last_activity?.slice(0, 10)}</span>
+            {/* Colonna destra: sessioni + recent queries impilate */}
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+            >
+              <div className="dash-card">
+                <div className="dash-card-label">top sessions</div>
+                <div className="sessions-list">
+                  {sessions.length === 0 && (
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                        color: "var(--text-dim)",
+                      }}
+                    >
+                      no sessions
+                    </span>
+                  )}
+                  {sessions.map((s, i) => (
+                    <div key={i} className="session-row">
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 2,
+                        }}
+                      >
+                        <span className="session-id">{s.session_id}...</span>
+                        <span className="session-date">
+                          {s.last_activity?.slice(0, 10)}
+                        </span>
+                      </div>
+                      <span className="session-count">{s.query_count} q</span>
                     </div>
-                    <span className="session-count">{s.query_count} q</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+
+              <div className="dash-card">
+                <div className="dash-card-label">recent queries</div>
+                <div className="recent-table-wrap">
+                  <table className="recent-table">
+                    <thead>
+                      <tr>
+                        <th>query</th>
+                        <th>answer</th>
+                        <th>latency</th>
+                        <th>cache</th>
+                        <th>feedback</th>
+                        <th>time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recent.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            style={{
+                              textAlign: "center",
+                              color: "var(--text-dim)",
+                              fontFamily: "var(--font-mono)",
+                              fontSize: 11,
+                            }}
+                          >
+                            no queries yet
+                          </td>
+                        </tr>
+                      )}
+                      {recent.map((r, i) => (
+                        <tr key={i}>
+                          <td className="td-query" title={r.query}>
+                            {r.query}
+                          </td>
+                          <td className="td-answer" title={r.answer}>
+                            {r.answer}
+                          </td>
+                          <td
+                            style={{
+                              fontFamily: "var(--font-mono)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {r.latency_ms != null
+                              ? (r.latency_ms / 1000).toFixed(1) + "s"
+                              : "—"}
+                          </td>
+                          <td>
+                            <span
+                              className={`badge ${r.cache_hit ? "badge-hit" : "badge-miss"}`}
+                            >
+                              {r.cache_hit ? "hit" : "miss"}
+                            </span>
+                          </td>
+                          <td>
+                            {r.feedback === true && (
+                              <span className="badge badge-up">↑ up</span>
+                            )}
+                            {r.feedback === false && (
+                              <span className="badge badge-down">↓ down</span>
+                            )}
+                            {r.feedback === null && (
+                              <span className="badge badge-none">—</span>
+                            )}
+                          </td>
+                          <td
+                            style={{
+                              fontFamily: "var(--font-mono)",
+                              fontSize: 10,
+                              whiteSpace: "nowrap",
+                              color: "var(--text-dim)",
+                            }}
+                          >
+                            {r.created_at?.slice(0, 16).replace("T", " ")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
-
-          {/* Recent Queries */}
-          <div className="dash-card">
-            <div className="dash-card-label">recent queries</div>
-            <div className="recent-table-wrap">
-              <table className="recent-table">
-                <thead>
-                  <tr>
-                    <th>query</th>
-                    <th>answer</th>
-                    <th>latency</th>
-                    <th>cache</th>
-                    <th>feedback</th>
-                    <th>time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recent.length === 0 && (
-                    <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11 }}>no queries yet</td></tr>
-                  )}
-                  {recent.map((r, i) => (
-                    <tr key={i}>
-                      <td className="td-query" title={r.query}>{r.query}</td>
-                      <td className="td-answer" title={r.answer}>{r.answer}</td>
-                      <td style={{ fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
-                        {r.latency_ms != null ? (r.latency_ms / 1000).toFixed(1) + "s" : "—"}
-                      </td>
-                      <td>
-                        <span className={`badge ${r.cache_hit ? "badge-hit" : "badge-miss"}`}>
-                          {r.cache_hit ? "hit" : "miss"}
-                        </span>
-                      </td>
-                      <td>
-                        {r.feedback === true && <span className="badge badge-up">↑ up</span>}
-                        {r.feedback === false && <span className="badge badge-down">↓ down</span>}
-                        {r.feedback === null && <span className="badge badge-none">—</span>}
-                      </td>
-                      <td style={{ fontFamily: "var(--font-mono)", fontSize: 10, whiteSpace: "nowrap", color: "var(--text-dim)" }}>
-                        {r.created_at?.slice(0, 16).replace("T", " ")}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
         </div>
       )}
     </div>
   );
 }
 
-
-
 export default function App() {
   const [page, setPage] = useState("chat");
 
   return (
-      <div className="app">
-        <nav className="sidebar">
-          <div className="sidebar-mark">Σ</div>
-          <div className="sidebar-divider" />
-          <button
-            className={`nav-btn ${page === "chat" ? "active" : ""}`}
-            onClick={() => setPage("chat")}
-            title="Query"
-          >
-            <ChatIcon />
-          </button>
-          <button
-            className={`nav-btn ${page === "dashboard" ? "active" : ""}`}
-            onClick={() => setPage("dashboard")}
-            title="Dashboard"
-          >
-            <DashboardIcon />
-          </button>
-        </nav>
-        <main className="main">
-          {page === "chat" ? <ChatPage /> : <DashboardPage />}
-        </main>
-      </div>
+    <div className="app">
+      <nav className="sidebar">
+        <div className="sidebar-mark">Σ</div>
+        <div className="sidebar-divider" />
+        <button
+          className={`nav-btn ${page === "chat" ? "active" : ""}`}
+          onClick={() => setPage("chat")}
+          title="Query"
+        >
+          <ChatIcon />
+        </button>
+        <button
+          className={`nav-btn ${page === "dashboard" ? "active" : ""}`}
+          onClick={() => setPage("dashboard")}
+          title="Dashboard"
+        >
+          <DashboardIcon />
+        </button>
+      </nav>
+      <main className="main">
+        {page === "chat" ? <ChatPage /> : <DashboardPage />}
+      </main>
+    </div>
   );
 }
