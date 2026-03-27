@@ -2,7 +2,7 @@
 
 A production-ready Retrieval-Augmented Generation (RAG) system built on AWS serverless infrastructure. Transforms dense, unstructured economic PDF reports into a conversational Q&A interface powered by hybrid retrieval, vision AI, and window memory.
 
-Built as a portfolio demonstration of end-to-end AI engineering: from raw PDF ingestion to a React frontend, fully deployed on AWS with Terraform.
+End-to-end AI engineering: from raw PDF ingestion to a React frontend, fully deployed on AWS with Terraform.
 
 ---
 
@@ -10,6 +10,10 @@ Built as a portfolio demonstration of end-to-end AI engineering: from raw PDF in
 
 🎬 [Watch Demo Video](https://github.com/Reasy94/RAGAWS/releases/download/v1.0/rag_demo_chat.mp4)
 
+
+![Chat Interface](docs/Screenshot1.png)
+![Chat Interface](docs/Screenshot2png)
+![Chat Interface](docs/Screenshot3.png)
 
 ---
 
@@ -159,3 +163,4 @@ V3 (BM25 + Vector → RRF) selected as production variant: best answer relevancy
 **Luca De Salvia** — AI Integration Engineer  
 Freelance | ex-Oracle EMEA AI CoE  
 [LinkedIn](https://www.linkedin.com/in/luca-de-salvia-341196201/) · [GitHub](https://github.com/Reasy94)
+Open to AI engineering roles — feel free to reach out on LinkedIn
