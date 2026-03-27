@@ -8,7 +8,7 @@ Built as a portfolio demonstration of end-to-end AI engineering: from raw PDF in
 
 ## Demo
 
-> 📸 *Screenshots and demo video coming soon*
+🎬 [Watch Demo Video](https://github.com/Reasy94/RAGAWS/releases/download/v1.0/rag_demo_chat.mp4)
 
 ---
 

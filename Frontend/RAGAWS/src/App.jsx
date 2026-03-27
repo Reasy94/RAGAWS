@@ -513,81 +513,93 @@ function UploadPage() {
 }
 
 // ── SVG Sparkline chart component ─────────────────────────────────────────────
+// ── Chart.js Bar Chart ─────────────────────────────────────────────────────────
 function SparklineChart({ data }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    if (!data || data.length === 0) return;
+
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
+    script.onload = () => {
+      if (chartRef.current) chartRef.current.destroy();
+      const ctx = canvasRef.current?.getContext('2d');
+      if (!ctx) return;
+
+      chartRef.current = new window.Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.map(d => d.day?.slice(5) || ''),
+          datasets: [{
+            data: data.map(d => d.count),
+            backgroundColor: 'rgba(200,162,85,0.25)',
+            borderColor: '#c8a255',
+            borderWidth: 1.5,
+            borderRadius: 2,
+            hoverBackgroundColor: 'rgba(200,162,85,0.45)',
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1a2038',
+              titleColor: '#c8a255',
+              bodyColor: '#8b98b8',
+              borderColor: 'rgba(200,162,85,0.3)',
+              borderWidth: 1,
+              titleFont: { family: 'JetBrains Mono', size: 11 },
+              bodyFont: { family: 'JetBrains Mono', size: 11 },
+              callbacks: {
+                title: items => items[0].label,
+                label: item => `${item.raw} queries`,
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+              ticks: {
+                color: 'rgba(139,152,184,0.5)',
+                font: { family: 'JetBrains Mono', size: 9 },
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8,
+              },
+              border: { display: false }
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+              ticks: {
+                color: 'rgba(139,152,184,0.5)',
+                font: { family: 'JetBrains Mono', size: 9 },
+                maxTicksLimit: 4,
+                precision: 0,
+              },
+              border: { display: false }
+            }
+          }
+        }
+      });
+    };
+    document.head.appendChild(script);
+    return () => { chartRef.current?.destroy(); };
+  }, [data]);
+
   if (!data || data.length === 0) return (
-    <div style={{ height: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>no data</span>
     </div>
   );
 
-  const W = 600, H = 120, PAD = { top: 10, right: 10, bottom: 30, left: 30 };
-  const innerW = W - PAD.left - PAD.right;
-  const innerH = H - PAD.top - PAD.bottom;
-
-  const maxVal = Math.max(...data.map(d => d.count), 1);
-  const xStep = innerW / Math.max(data.length - 1, 1);
-
-  const points = data.map((d, i) => ({
-    x: PAD.left + i * xStep,
-    y: PAD.top + innerH - (d.count / maxVal) * innerH,
-    ...d,
-  }));
-
-  const polyline = points.map(p => `${p.x},${p.y}`).join(" ");
-  const area = `M${points[0].x},${PAD.top + innerH} ` +
-    points.map(p => `L${p.x},${p.y}`).join(" ") +
-    ` L${points[points.length - 1].x},${PAD.top + innerH} Z`;
-
-  // Show max 7 x-axis labels
-  const labelStep = Math.ceil(data.length / 7);
-
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 80 }} preserveAspectRatio="none">
-      {/* Grid lines */}
-      {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
-        const y = PAD.top + innerH - t * innerH;
-        return (
-          <line key={i}
-            x1={PAD.left} y1={y} x2={PAD.left + innerW} y2={y}
-            stroke="rgba(255,255,255,0.04)" strokeWidth="1"
-          />
-        );
-      })}
-
-      {/* Area fill */}
-      <path d={area} fill="rgba(200,162,85,0.08)" />
-
-      {/* Line */}
-      <polyline points={polyline} fill="none" stroke="#c8a255" strokeWidth="1.5" />
-
-      {/* Dots */}
-      {points.map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="#c8a255" />
-      ))}
-
-      {/* X axis labels */}
-      {points.filter((_, i) => i % labelStep === 0 || i === points.length - 1).map((p, i) => (
-        <text key={i}
-          x={p.x} y={H - 6}
-          textAnchor="middle"
-          fontSize="9"
-          fill="rgba(139,152,184,0.5)"
-          fontFamily="JetBrains Mono, monospace"
-        >
-          {p.day?.slice(5)}
-        </text>
-      ))}
-
-      {/* Y axis max label */}
-      <text
-        x={PAD.left - 4} y={PAD.top + 4}
-        textAnchor="end" fontSize="9"
-        fill="rgba(139,152,184,0.5)"
-        fontFamily="JetBrains Mono, monospace"
-      >
-        {maxVal}
-      </text>
-    </svg>
+    <div style={{ position: "relative", width: "100%", height: 120 }}>
+      <canvas ref={canvasRef} />
+    </div>
   );
 }
 
