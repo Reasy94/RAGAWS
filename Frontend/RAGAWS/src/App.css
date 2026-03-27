@@ -460,3 +460,9 @@
   .refresh-btn:hover { border-color: rgba(200,162,85,0.4); color: var(--amber-text); }
 
   .recent-table-wrap { overflow-x: auto; max-height: 320px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+  .dash-top-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 16px;
+  }

@@ -648,9 +648,7 @@ function DashboardPage() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  useEffect(() => { fetchStats(); }, []);
 
   const kpi = stats?.kpi || {};
   const daily = stats?.daily || [];
@@ -685,6 +683,7 @@ function DashboardPage() {
 
       {stats && (
         <div className="dash-body">
+
           {/* KPI Cards */}
           <div className="kpi-grid">
             <div className="kpi-card">
@@ -695,18 +694,8 @@ function DashboardPage() {
             <div className="kpi-card">
               <div className="kpi-label">avg latency</div>
               <div className="kpi-value">
-                {kpi.avg_latency_ms != null
-                  ? (kpi.avg_latency_ms / 1000).toFixed(1)
-                  : "—"}
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-dim)",
-                    marginLeft: 4,
-                  }}
-                >
-                  s
-                </span>
+                {kpi.avg_latency_ms != null ? (kpi.avg_latency_ms / 1000).toFixed(1) : "—"}
+                <span style={{ fontSize: 14, color: "var(--text-dim)", marginLeft: 4 }}>s</span>
               </div>
               <div className="kpi-sub">per query</div>
             </div>
@@ -721,155 +710,86 @@ function DashboardPage() {
             <div className="kpi-card">
               <div className="kpi-label">positive feedback</div>
               <div className="kpi-value">
-                {kpi.positive_feedback_pct != null
-                  ? kpi.positive_feedback_pct
-                  : "—"}
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-dim)",
-                    marginLeft: 2,
-                  }}
-                >
-                  %
-                </span>
+                {kpi.positive_feedback_pct != null ? kpi.positive_feedback_pct : "—"}
+                <span style={{ fontSize: 14, color: "var(--text-dim)", marginLeft: 2 }}>%</span>
               </div>
               <div className="kpi-sub">thumbs up / total</div>
             </div>
           </div>
 
-          {/* Layout: grafico a sinistra, sessioni + recent a destra */}
-          <div className="dash-main-grid">
-            {/* Colonna sinistra: solo grafico */}
+          {/* Grafico + Sessioni affiancati */}
+          <div className="dash-top-grid">
             <div className="dash-card">
               <div className="dash-card-label">queries · last 30 days</div>
               <div className="chart-wrap">
                 <SparklineChart data={daily} />
               </div>
             </div>
-
-            {/* Colonna destra: sessioni + recent queries impilate */}
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-            >
-              <div className="dash-card">
-                <div className="dash-card-label">top sessions</div>
-                <div className="sessions-list">
-                  {sessions.length === 0 && (
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 11,
-                        color: "var(--text-dim)",
-                      }}
-                    >
-                      no sessions
-                    </span>
-                  )}
-                  {sessions.map((s, i) => (
-                    <div key={i} className="session-row">
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2,
-                        }}
-                      >
-                        <span className="session-id">{s.session_id}...</span>
-                        <span className="session-date">
-                          {s.last_activity?.slice(0, 10)}
-                        </span>
-                      </div>
-                      <span className="session-count">{s.query_count} q</span>
+            <div className="dash-card">
+              <div className="dash-card-label">top sessions</div>
+              <div className="sessions-list">
+                {sessions.length === 0 && (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>no sessions</span>
+                )}
+                {sessions.map((s, i) => (
+                  <div key={i} className="session-row">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span className="session-id">{s.session_id}...</span>
+                      <span className="session-date">{s.last_activity?.slice(0, 10)}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="dash-card">
-                <div className="dash-card-label">recent queries</div>
-                <div className="recent-table-wrap">
-                  <table className="recent-table">
-                    <thead>
-                      <tr>
-                        <th>query</th>
-                        <th>answer</th>
-                        <th>latency</th>
-                        <th>cache</th>
-                        <th>feedback</th>
-                        <th>time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recent.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            style={{
-                              textAlign: "center",
-                              color: "var(--text-dim)",
-                              fontFamily: "var(--font-mono)",
-                              fontSize: 11,
-                            }}
-                          >
-                            no queries yet
-                          </td>
-                        </tr>
-                      )}
-                      {recent.map((r, i) => (
-                        <tr key={i}>
-                          <td className="td-query" title={r.query}>
-                            {r.query}
-                          </td>
-                          <td className="td-answer" title={r.answer}>
-                            {r.answer}
-                          </td>
-                          <td
-                            style={{
-                              fontFamily: "var(--font-mono)",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {r.latency_ms != null
-                              ? (r.latency_ms / 1000).toFixed(1) + "s"
-                              : "—"}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${r.cache_hit ? "badge-hit" : "badge-miss"}`}
-                            >
-                              {r.cache_hit ? "hit" : "miss"}
-                            </span>
-                          </td>
-                          <td>
-                            {r.feedback === true && (
-                              <span className="badge badge-up">↑ up</span>
-                            )}
-                            {r.feedback === false && (
-                              <span className="badge badge-down">↓ down</span>
-                            )}
-                            {r.feedback === null && (
-                              <span className="badge badge-none">—</span>
-                            )}
-                          </td>
-                          <td
-                            style={{
-                              fontFamily: "var(--font-mono)",
-                              fontSize: 10,
-                              whiteSpace: "nowrap",
-                              color: "var(--text-dim)",
-                            }}
-                          >
-                            {r.created_at?.slice(0, 16).replace("T", " ")}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    <span className="session-count">{s.query_count} q</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
+
+          {/* Recent Queries full width */}
+          <div className="dash-card">
+            <div className="dash-card-label">recent queries</div>
+            <div className="recent-table-wrap">
+              <table className="recent-table">
+                <thead>
+                  <tr>
+                    <th>query</th>
+                    <th>answer</th>
+                    <th>latency</th>
+                    <th>cache</th>
+                    <th>feedback</th>
+                    <th>time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent.length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11 }}>no queries yet</td></tr>
+                  )}
+                  {recent.map((r, i) => (
+                    <tr key={i}>
+                      <td className="td-query" title={r.query}>{r.query}</td>
+                      <td className="td-answer" title={r.answer}>{r.answer}</td>
+                      <td style={{ fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
+                        {r.latency_ms != null ? (r.latency_ms / 1000).toFixed(1) + "s" : "—"}
+                      </td>
+                      <td>
+                        <span className={`badge ${r.cache_hit ? "badge-hit" : "badge-miss"}`}>
+                          {r.cache_hit ? "hit" : "miss"}
+                        </span>
+                      </td>
+                      <td>
+                        {r.feedback === true && <span className="badge badge-up">↑ up</span>}
+                        {r.feedback === false && <span className="badge badge-down">↓ down</span>}
+                        {r.feedback === null && <span className="badge badge-none">—</span>}
+                      </td>
+                      <td style={{ fontFamily: "var(--font-mono)", fontSize: 10, whiteSpace: "nowrap", color: "var(--text-dim)" }}>
+                        {r.created_at?.slice(0, 16).replace("T", " ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
       )}
     </div>
