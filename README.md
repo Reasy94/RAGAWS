@@ -16,15 +16,13 @@ Built as a portfolio demonstration of end-to-end AI engineering: from raw PDF in
 
 Upload a PDF report → the system automatically ingests, parses, and indexes it. Ask questions in natural language → get precise, sourced answers with referenced figures and tables.
 
-The system was developed and validated on **World Bank Global Economic Prospects (GEP)** and **IMF Commodity Markets Outlook (CMO)** reports.
+The system was developed and validated on **World Bank Global Economic Prospects (GEP)** and **World Bank Global Commodity Markets Outlook (CMO)** reports.
 
 ---
 
 ## Architecture
 
 ![Architecture Diagram](docs/Architecture_diagram.png)
-
-> *Diagram coming soon*
 
 ### Ingestion Pipeline
 
@@ -142,11 +140,15 @@ Evaluated with [RAGAS](https://ragas.io/) + MLflow on a curated set of 20+ quest
 
 V3 (BM25 + Vector → RRF) selected as production variant: best answer relevancy across all configurations, with latency 38x lower than V4 (0.14s vs 5.41s). V4 was discarded despite marginally higher faithfulness: Cohere Rerank v3.5 is not available in ap-southeast-1 and requires cross-region inference routing through ap-northeast-1, adding significant latency overhead that makes it unsuitable for a production retrieval pipeline.
 
-Retrieved chunk vector scores: consistently above 0.6 (Cohere Embed Multilingual v3 cosine similarity). Domain routing similarity: 0.47–0.53 for in-domain queries. Window memory validated and rolling summary confirmed working across multiple turns.
+- Retrieved chunk vector scores: consistently above 0.6 (Cohere Embed Multilingual v3 cosine similarity)
+- Domain routing similarity: 0.47–0.53 for in-domain queries
+- Window memory validated — rolling summary confirmed working across multiple turns
+
+
 ---
 
 ## Author
 
 **Luca De Salvia** — AI Integration Engineer  
 Freelance | ex-Oracle EMEA AI CoE  
-[LinkedIn](https://linkedin.com/in/lucadesalvia) · [GitHub](https://github.com/Reasy94)
+[LinkedIn](https://www.linkedin.com/in/luca-de-salvia-341196201/) · [GitHub](https://github.com/Reasy94)

@@ -1,21 +1,3 @@
-"""
-aggregato.py
--------------------
-Lambda di ingestion PDF con pdf_splitter integrato.
-
-Modifiche rispetto alla versione precedente:
-  - Rimossa pipeline vision basata su _inspect_page() / has_vector / has_image
-  - Integrato process_page() da pdf_splitter.py
-  - FIGURE/TABLE → PNG croppato + ctx_before/ctx_after → Haiku Vision → chunk atomico
-  - TEXT → _build_context_header() + splitter.split_text() + embedding
-  - Tutte le funzioni geometriche adattate per bytes invece di path
-  
-Integrazione da debug_splitter.py (try2):
-  - TABLE → sempre figure_side="full" (non si taglia mai)
-  - FIGURE → logica empirica migliorata con gutter 25pt e check colonna opposta
-  - split_by_columns usa mid (center page) come crop point, non blk["x0"]
-"""
-
 import boto3
 import logging
 import json
@@ -63,7 +45,6 @@ bedrock = boto3.client(
 s3 = boto3.client("s3")
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
-#ORPHAN_TOKEN   = re.compile(r'(?<!\w)[A-Z]{1,2}(?!\w)')
 ORPHAN_TOKEN = re.compile(r'(?<![.\w])[A-Z](?![.\w])')
 BLOCK_KEYWORDS = re.compile(r'^(FIGURE|TABLE)$', re.IGNORECASE)
 
@@ -429,11 +410,6 @@ def _get_section_for_page(page_num: int, toc: list, offset: int) -> str:
 
 
 def _build_context_header(doc_meta: dict, page_num: int) -> str:
-    """
-    Costruisce il context header per ogni chunk.
-    Formato: [doc_name | section]
-    Fonte: Anthropic (2024) Contextual Retrieval.
-    """
     section = _get_section_for_page(page_num, doc_meta["toc"], doc_meta["offset"])
     if section:
         return f"[{doc_meta['doc_name']} | {section}]"
@@ -492,12 +468,9 @@ def _find_last_content_page(plumber_pdf, toc, offset):
         logger.info("_find_last_content_page: empty TOC — returning len(pages)")
         return len(plumber_pdf.pages)
     
-    # Pagina fisica dell'ultima entry TOC
     last_toc_entry = toc[-1]
     last_toc_physical = last_toc_entry["page"] + offset
     logger.info(f"_find_last_content_page: last entry='{last_toc_entry['title']}' page={last_toc_entry['page']} offset={offset} → fisica={last_toc_physical}")
-    # Scannerizziamo in avanti dall'ultima entry TOC
-    # Cerchiamo una pagina vuota che segna la fine del contenuto
     for page_idx in range(last_toc_physical, len(plumber_pdf.pages)):
         text = plumber_pdf.pages[page_idx].extract_text() or ""
         chars = len(text.strip())
@@ -510,15 +483,6 @@ def _find_last_content_page(plumber_pdf, toc, offset):
 
 
 def _find_content_blocks(plumber_pdf: pdfplumber.PDF, page_idx: int) -> list[dict]:
-    """
-    Trova i titoli di FIGURE e TABLE via font bold.
-    
-    Logica da debug_splitter.py (try2):
-      - TABLE → sempre figure_side="full" (non si taglia mai una tabella)
-      - FIGURE → full se titolo centrale, o se colonna opposta vuota;
-                 left/right solo se c'è testo nella colonna opposta
-      - Gutter: 25pt (area di rispetto centrale)
-    """
     results = []
     page    = plumber_pdf.pages[page_idx]
     width   = page.width
@@ -533,16 +497,12 @@ def _find_content_blocks(plumber_pdf: pdfplumber.PDF, page_idx: int) -> list[dic
         cur = words[i]
         matched_type = matched_x0 = matched_top = matched_font = None
         advance = 1
-
-        # Strategy 1: "FIGURE 1.1" or "TABLE 1.1" (bold keyword + number)
         if BLOCK_KEYWORDS.match(cur["text"]) and _is_bold_font(cur["fontname"]):
             if i + 1 < len(words) and re.match(r'^[\dA-Z][\d\.]*$', words[i+1]["text"]):
                 matched_type = cur["text"].upper()
                 matched_x0   = cur["x0"]
                 matched_top  = cur["top"]
-                matched_font = cur["fontname"]
 
-        # Strategy 2: "F" + "IGURE" (kerned) + number
         elif (cur["text"] == "F"
               and _is_bold_font(cur["fontname"])
               and i + 1 < len(words)
@@ -552,7 +512,6 @@ def _find_content_blocks(plumber_pdf: pdfplumber.PDF, page_idx: int) -> list[dic
                 matched_type = "FIGURE"
                 matched_x0   = cur["x0"]
                 matched_top  = cur["top"]
-                matched_font = cur["fontname"]
                 advance      = 2
 
         if matched_type:
@@ -562,7 +521,6 @@ def _find_content_blocks(plumber_pdf: pdfplumber.PDF, page_idx: int) -> list[dic
             if matched_type == "TABLE":
                 figure_side = "full"
             else:
-                # Check empirico: controlliamo sempre la colonna opposta
                 if matched_x0 < mid:
                     check_area = (mid + margin, matched_top - 2, width, matched_top + 10)
                 else:
@@ -590,16 +548,14 @@ def _find_content_blocks(plumber_pdf: pdfplumber.PDF, page_idx: int) -> list[dic
 
 
 def split_simple_two_columns(page):
-    """Estrae il testo da una pagina standard dividendolo in due colonne geometriche."""
     results = []
     width, height = page.width, page.height
     margin_left = 2
     margin_right = 2
     mid = width / 2
-    # Margini per evitare testate e numeri di pagina
+
     top_limit, bottom_limit = 45, height - 45
     
-    # Controllo per evitare di spezzare titoli centrati o copertine
     full_text = page.crop((0, top_limit, width, bottom_limit)).extract_text() or ""
     if len(full_text) < 300:
         return [{"type": "TEXT", "content": _clean_orphans(full_text), "source": "geom_full_page"}]
@@ -621,7 +577,7 @@ def _find_bottom_boundary(
     page_idx: int,
     block: dict,
 ) -> float | None:
-    """Trova y_bottom di un blocco. Riceve plumber_pdf già aperto."""
+    
     x0    = block["x0"]
     y_top = block["top"]
     side  = block["figure_side"]
@@ -664,23 +620,7 @@ def _split_by_columns(
     page_idx: int,
     content_blocks: list[dict],
 ) -> list:
-    """
-    Pattern Sandwich (da upload_pdf.py, adattato per bytes):
-    
-    La pagina viene divisa in 3 fasce orizzontali:
-      - SOPRA  (0 → y_top):     testo puro, estratto a due colonne
-      - CENTRO (y_top → y_bot): il blocco FIGURE/TABLE
-      - SOTTO  (y_bot → H):     testo puro, estratto a due colonne
-    
-    Regole blocco centrale:
-      - TABLE → sempre full-width (non si taglia mai)
-      - FIGURE full → full-width
-      - FIGURE left → crop solo colonna sinistra; colonna destra come TEXT
-      - FIGURE right → crop solo colonna destra; colonna sinistra come TEXT
-    
-    Le fasce SOPRA e SOTTO vengono sempre estratte a due colonne
-    per evitare che numeri di tabelle/figure sporchino il testo.
-    """
+
     results = []
     page    = plumber_pdf.pages[page_idx]
     width   = page.width
@@ -691,37 +631,30 @@ def _split_by_columns(
 
     for blk in content_blocks:
         side = blk["figure_side"]
-        y_t  = max(blk["top"] - 10, 0)  # Piccolo margine sopra il titolo
+        y_t  = max(blk["top"] - 10, 0)
         y_b  = _find_bottom_boundary(plumber_pdf, page_idx, blk) or (y_t + 300)
 
-        # ── BLOCCO CENTRALE ───────────────────────────────────────────
         if side == "full":
-            # TABLE o FIGURE full-width: crop a tutta larghezza
             f_txt = page.crop((0, y_t, width, y_b)).extract_text() or ""
             if f_txt.strip():
                 results.append({"type": blk["type"], "content": f_txt.strip(), "source": "geom_fig"})
 
         elif side == "right":
-            # FIGURE a destra: crop solo colonna destra
             f_txt = page.crop((mid - margin_right, y_t, width, y_b)).extract_text() or ""
             if f_txt.strip():
                 results.append({"type": blk["type"], "content": f_txt.strip(), "source": "geom_fig"})
-            # Colonna opposta (sinistra) nella fascia del blocco → TEXT
             opp_txt = page.crop((0, y_t, mid - margin_left, y_b)).extract_text() or ""
             if opp_txt.strip():
                 results.append({"type": "TEXT", "content": _clean_orphans(opp_txt), "source": "geom_left_mid"})
 
-        else:  # left
-            # FIGURE a sinistra: crop solo colonna sinistra
+        else:
             f_txt = page.crop((0, y_t, mid - margin_left, y_b)).extract_text() or ""
             if f_txt.strip():
                 results.append({"type": blk["type"], "content": f_txt.strip(), "source": "geom_fig"})
-            # Colonna opposta (destra) nella fascia del blocco → TEXT
             opp_txt = page.crop((mid - margin_right, y_t, width, y_b)).extract_text() or ""
             if opp_txt.strip():
                 results.append({"type": "TEXT", "content": _clean_orphans(opp_txt), "source": "geom_right_mid"})
 
-        # ── FASCE SOPRA E SOTTO (testo puro, due colonne) ─────────────
         text_bands = [
             ("top",    5,   y_t),
             ("bottom", y_b, height - 5),
@@ -748,20 +681,14 @@ def _process_page(
     plumber_pdf: pdfplumber.PDF,
     page_idx: int,
 ) -> list[dict]:
-    """
-    Coordina le strategie di estrazione: Sandwich (se ci sono FIGURE/TABLE) 
-    o Due Colonne (se è solo testo).
-    """
+
     page = plumber_pdf.pages[page_idx]
     
-    # 1. SCOUTING: Cerchiamo FIGURE o TABLE nella pagina
     blocks = _find_content_blocks(plumber_pdf, page_idx)
     
     if blocks:
-        # 2. STRATEGIA SANDWICH: Usa la logica a colonne rispettando i blocchi trovati
         source_blocks = _split_by_columns(plumber_pdf, page_idx, blocks)
     else:
-        # 3. STRATEGIA DUE COLONNE: Testo standard pulito
         source_blocks = split_simple_two_columns(page)
         
     return source_blocks
@@ -774,16 +701,12 @@ def _extract_figure_png_b64(
     blk: dict,
     dpi: int = 150,
 ) -> str:
-    """Estrae il blocco FIGURE/TABLE come PNG base64."""
+
     page = fitz_doc[page_idx]
     side = blk["figure_side"]
 
     y_bottom = _find_bottom_boundary(plumber_pdf, page_idx, blk)
 
-    # Coordinate di crop allineate alla logica try2:
-    # full → tutta la larghezza
-    # right → da metà pagina a destra
-    # left → da sinistra a metà pagina
     if side == "full":
         x0 = 0
         x1 = page.rect.width
@@ -985,12 +908,7 @@ def _call_haiku_vision(
     ctx_before: str | None = None,
     table_text: str | None = None,
 ) -> str:
-    """
-    Chiama Haiku Vision con:
-    - source_text: testo estratto dal blocco figura (titolo + descrizione + Sources)
-    - ctx_before: chunk TEXT immediatamente prima (se presente)
-    - table_text: dati strutturati della tabella (se presente)
-    """
+
     context_parts = []
     if ctx_before:
         context_parts.append(f"Text before this figure:\n{ctx_before}")
