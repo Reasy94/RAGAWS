@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from 'react-markdown'
 
 const API_URL = import.meta.env.VITE_API_URL;
 const UPLOAD_LAMBDA_URL = import.meta.env.VITE_UPLOAD_URL;
@@ -732,7 +733,7 @@ function ChatPage() {
               </div>
               <div className="msg-body">
                 <div className="msg-bubble">
-                  {msg.content}
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
                   {msg.cached && <span className="cached-badge">↺ cached</span>}
                   {msg.latency_ms && (
                     <span className="cached-badge" style={{ marginLeft: 4 }}>
