@@ -629,12 +629,13 @@ def lambda_handler(event, context):
         cached = check_cache(query_embedding)
         if cached:
             cached["sources"] = _enrich_sources(cached["sources"])
+            cached["latency_ms"] = int((time.time() - start_time) * 1000)
             _store_query_history(
                 session_id = session_id,
                 query      = query,
                 answer     = cached["response"],
                 sources    = cached["sources"],
-                latency_ms = int((time.time() - start_time) * 1000),
+                latency_ms = cached["latency_ms"],
                 cache_hit  = True,
             )
             return _api_response(200, cached)
