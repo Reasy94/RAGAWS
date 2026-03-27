@@ -13,6 +13,12 @@ Built as a portfolio demonstration of end-to-end AI engineering: from raw PDF in
 
 ---
 
+## Dashboard
+
+![Dashboard for Analysis](docs/dashboard.png)
+
+---
+
 ## What It Does
 
 Upload a PDF report → the system automatically ingests, parses, and indexes it. Ask questions in natural language → get precise, sourced answers with referenced figures and tables.
