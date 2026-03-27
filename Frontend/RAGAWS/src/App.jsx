@@ -790,5 +790,6 @@ export default function App() {
           {page === "chat" ? <ChatPage /> : <DashboardPage />}
         </main>
       </div>
+    </>
   );
 }
