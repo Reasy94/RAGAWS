@@ -4,34 +4,17 @@ import "./App.css";
 
 const API_URL = import.meta.env.VITE_API_URL;
 const UPLOAD_LAMBDA_URL = import.meta.env.VITE_UPLOAD_URL;
-const FEEDBACK_URL = import.meta.env.VITE_API_URL?.replace(
-  "/query",
-  "/feedback",
-);
+const FEEDBACK_URL = import.meta.env.VITE_API_URL?.replace("/query", "/feedback");
 const STATS_URL = import.meta.env.VITE_API_URL?.replace("/query", "/stats");
 
 const ChatIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.6"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
 
 const UploadIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.6"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
     <polyline points="17 8 12 3 7 8" />
     <line x1="12" y1="3" x2="12" y2="15" />
@@ -39,70 +22,35 @@ const UploadIcon = () => (
 );
 
 const SendIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="22" y1="2" x2="11" y2="13" />
     <polygon points="22 2 15 22 11 13 2 9 22 2" />
   </svg>
 );
 
 const XIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="6" x2="6" y2="18" />
     <line x1="6" y1="6" x2="18" y2="18" />
   </svg>
 );
 
 const ThumbUp = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" />
     <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
   </svg>
 );
 
 const ThumbDown = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z" />
     <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
   </svg>
 );
 
 const DashboardIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.6"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="7" height="7" />
     <rect x="14" y="3" width="7" height="7" />
     <rect x="14" y="14" width="7" height="7" />
@@ -111,16 +59,7 @@ const DashboardIcon = () => (
 );
 
 const DocIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.6"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    width="16"
-    height="16"
-  >
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
     <polyline points="14 2 14 8 20 8" />
   </svg>
@@ -152,20 +91,10 @@ function FeedbackButtons({ queryId }) {
   return (
     <div className="feedback-row">
       <span className="feedback-hint">useful?</span>
-      <button
-        className={`fb-btn ${vote === "up" ? "voted" : ""}`}
-        onClick={() => handleVote("up")}
-        disabled={!!vote}
-        title="Helpful"
-      >
+      <button className={`fb-btn ${vote === "up" ? "voted" : ""}`} onClick={() => handleVote("up")} disabled={!!vote} title="Helpful">
         <ThumbUp />
       </button>
-      <button
-        className={`fb-btn ${vote === "down" ? "voted" : ""}`}
-        onClick={() => handleVote("down")}
-        disabled={!!vote}
-        title="Not helpful"
-      >
+      <button className={`fb-btn ${vote === "down" ? "voted" : ""}`} onClick={() => handleVote("down")} disabled={!!vote} title="Not helpful">
         <ThumbDown />
       </button>
       {vote && <span className="fb-thanks">recorded</span>}
@@ -241,17 +170,11 @@ function ChatPage() {
           <div className="topbar-sep" />
           <span className="topbar-label">document intelligence</span>
           <div className="topbar-sep" />
-          <span
-            className="topbar-title"
-            style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}
-          >
+          <span className="topbar-title" style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}>
             {sessionId.current.slice(0, 8)}
           </span>
         </div>
-        <span
-          className="topbar-label"
-          style={{ color: "var(--amber)", fontSize: "10px" }}
-        >
+        <span className="topbar-label" style={{ color: "var(--amber)", fontSize: "10px" }}>
           RAG · V3
         </span>
       </div>
@@ -266,9 +189,7 @@ function ChatPage() {
         ) : (
           messages.map((msg, i) => (
             <div key={i} className={`msg ${msg.role}`}>
-              <div className="msg-avatar">
-                {msg.role === "user" ? "U" : "AI"}
-              </div>
+              <div className="msg-avatar">{msg.role === "user" ? "U" : "AI"}</div>
               <div className="msg-body">
                 <div className="msg-bubble">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
@@ -282,38 +203,28 @@ function ChatPage() {
                     <div className="msg-sources">
                       {msg.sources.some((s) => s.image_url) && (
                         <div className="source-images-row">
-                          {msg.sources
-                            .filter((s) => s.image_url)
-                            .map((s, j) => (
-                              <img
-                                key={j}
-                                src={s.image_url}
-                                alt={`${s.chunk_type} from ${s.file_name} p.${s.page_number}`}
-                                className="source-image"
-                                onClick={() =>
-                                  window.open(s.image_url, "_blank")
-                                }
-                              />
-                            ))}
+                          {msg.sources.filter((s) => s.image_url).map((s, j) => (
+                            <img
+                              key={j}
+                              src={s.image_url}
+                              alt={`${s.chunk_type} from ${s.file_name} p.${s.page_number}`}
+                              className="source-image"
+                              onClick={() => window.open(s.image_url, "_blank")}
+                            />
+                          ))}
                         </div>
                       )}
                       <div className="source-pills-row">
                         {msg.sources.map((s, j) => (
                           <span key={j} className="source-pill">
                             {s.file_name} · p.{s.page_number}
-                            {s.chunk_type !== "TEXT" && (
-                              <span className="source-type">
-                                {s.chunk_type}
-                              </span>
-                            )}
+                            {s.chunk_type !== "TEXT" && <span className="source-type">{s.chunk_type}</span>}
                           </span>
                         ))}
                       </div>
                     </div>
                   )}
-                  {msg.role === "assistant" && !msg.error && (
-                    <FeedbackButtons queryId={msg.query_id} />
-                  )}
+                  {msg.role === "assistant" && !msg.error && <FeedbackButtons queryId={msg.query_id} />}
                 </div>
               </div>
             </div>
@@ -339,23 +250,13 @@ function ChatPage() {
             className="chat-input"
             placeholder="Query your financial documents..."
             value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              resize();
-            }}
+            onChange={(e) => { setInput(e.target.value); resize(); }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
             }}
             rows={1}
           />
-          <button
-            className="send-btn"
-            onClick={send}
-            disabled={!input.trim() || loading}
-          >
+          <button className="send-btn" onClick={send} disabled={!input.trim() || loading}>
             <SendIcon />
           </button>
         </div>
@@ -373,12 +274,7 @@ function UploadPage() {
     const pdfs = Array.from(raw).filter((f) => f.type === "application/pdf");
     setFiles((p) => [
       ...p,
-      ...pdfs.map((f) => ({
-        file: f,
-        id: crypto.randomUUID(),
-        status: "pending",
-        progress: 0,
-      })),
+      ...pdfs.map((f) => ({ file: f, id: crypto.randomUUID(), status: "pending", progress: 0 })),
     ]);
   };
 
@@ -386,33 +282,18 @@ function UploadPage() {
 
   const uploadAll = async () => {
     for (const item of files.filter((f) => f.status === "pending")) {
-      setFiles((p) =>
-        p.map((f) => (f.id === item.id ? { ...f, status: "uploading" } : f)),
-      );
+      setFiles((p) => p.map((f) => (f.id === item.id ? { ...f, status: "uploading" } : f)));
       try {
         const res = await fetch(UPLOAD_LAMBDA_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filename: item.file.name,
-            content_type: "application/pdf",
-          }),
+          body: JSON.stringify({ filename: item.file.name, content_type: "application/pdf" }),
         });
         const { upload_url } = await res.json();
-        await fetch(upload_url, {
-          method: "PUT",
-          body: item.file,
-          headers: { "Content-Type": "application/pdf" },
-        });
-        setFiles((p) =>
-          p.map((f) =>
-            f.id === item.id ? { ...f, status: "done", progress: 100 } : f,
-          ),
-        );
+        await fetch(upload_url, { method: "PUT", body: item.file, headers: { "Content-Type": "application/pdf" } });
+        setFiles((p) => p.map((f) => (f.id === item.id ? { ...f, status: "done", progress: 100 } : f)));
       } catch {
-        setFiles((p) =>
-          p.map((f) => (f.id === item.id ? { ...f, status: "error" } : f)),
-        );
+        setFiles((p) => p.map((f) => (f.id === item.id ? { ...f, status: "error" } : f)));
       }
     }
   };
@@ -421,10 +302,7 @@ function UploadPage() {
 
   return (
     <div className="upload-page">
-      <div
-        className="topbar"
-        style={{ margin: "-36px -44px 32px", padding: "0 44px" }}
-      >
+      <div className="topbar" style={{ margin: "-36px -44px 32px", padding: "0 44px" }}>
         <div className="topbar-left">
           <div className="status-dot" />
           <div className="topbar-sep" />
@@ -439,51 +317,29 @@ function UploadPage() {
 
       <div
         className={`drop-zone ${drag ? "drag" : ""}`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDrag(true);
-        }}
+        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDrag(false);
-          addFiles(e.dataTransfer.files);
-        }}
+        onDrop={(e) => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
         onClick={() => inputRef.current?.click()}
       >
         <div className="drop-icon">⊕</div>
         <div className="drop-title">Drop PDF files here</div>
-        <div className="drop-sub">
-          or <span>browse files</span> from your machine
-        </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf"
-          multiple
-          onChange={(e) => addFiles(e.target.files)}
-        />
+        <div className="drop-sub">or <span>browse files</span> from your machine</div>
+        <input ref={inputRef} type="file" accept=".pdf" multiple onChange={(e) => addFiles(e.target.files)} />
       </div>
 
       {files.length > 0 && (
         <div className="file-list">
-          <div className="file-list-label">
-            {files.length} file{files.length !== 1 ? "s" : ""} queued
-          </div>
+          <div className="file-list-label">{files.length} file{files.length !== 1 ? "s" : ""} queued</div>
           {files.map((item) => (
             <div key={item.id} className={`file-item ${item.status}`}>
-              <div className="file-icon">
-                <DocIcon />
-              </div>
+              <div className="file-icon"><DocIcon /></div>
               <div className="file-info">
                 <div className="file-name">{item.file.name}</div>
                 <div className="file-meta">{formatBytes(item.file.size)}</div>
                 {item.status === "uploading" && (
                   <div className="progress-wrap">
-                    <div
-                      className="progress-bar"
-                      style={{ width: item.progress + "%" }}
-                    />
+                    <div className="progress-bar" style={{ width: item.progress + "%" }} />
                   </div>
                 )}
               </div>
@@ -494,20 +350,13 @@ function UploadPage() {
                 {item.status === "error" && "✕ failed"}
               </div>
               {item.status === "pending" && (
-                <button className="remove-btn" onClick={() => remove(item.id)}>
-                  <XIcon />
-                </button>
+                <button className="remove-btn" onClick={() => remove(item.id)}><XIcon /></button>
               )}
             </div>
           ))}
           <div className="action-row">
-            <button
-              className="upload-btn"
-              onClick={uploadAll}
-              disabled={pendingCount === 0}
-            >
-              Ingest {pendingCount > 0 ? pendingCount : ""}{" "}
-              {pendingCount === 1 ? "file" : "files"}
+            <button className="upload-btn" onClick={uploadAll} disabled={pendingCount === 0}>
+              Ingest {pendingCount > 0 ? pendingCount : ""} {pendingCount === 1 ? "file" : "files"}
             </button>
           </div>
         </div>
@@ -516,8 +365,6 @@ function UploadPage() {
   );
 }
 
-// ── SVG Sparkline chart component ─────────────────────────────────────────────
-// ── Chart.js Bar Chart ─────────────────────────────────────────────────────────
 function SparklineChart({ data }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -526,8 +373,7 @@ function SparklineChart({ data }) {
     if (!data || data.length === 0) return;
 
     const script = document.createElement("script");
-    script.src =
-      "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
     script.onload = () => {
       if (chartRef.current) chartRef.current.destroy();
       const ctx = canvasRef.current?.getContext("2d");
@@ -537,16 +383,14 @@ function SparklineChart({ data }) {
         type: "bar",
         data: {
           labels: data.map((d) => d.day?.slice(5) || ""),
-          datasets: [
-            {
-              data: data.map((d) => d.count),
-              backgroundColor: "rgba(200,162,85,0.25)",
-              borderColor: "#c8a255",
-              borderWidth: 1.5,
-              borderRadius: 2,
-              hoverBackgroundColor: "rgba(200,162,85,0.45)",
-            },
-          ],
+          datasets: [{
+            data: data.map((d) => d.count),
+            backgroundColor: "rgba(200,162,85,0.25)",
+            borderColor: "#c8a255",
+            borderWidth: 1.5,
+            borderRadius: 2,
+            hoverBackgroundColor: "rgba(200,162,85,0.45)",
+          }],
         },
         options: {
           responsive: true,
@@ -570,23 +414,12 @@ function SparklineChart({ data }) {
           scales: {
             x: {
               grid: { color: "rgba(255,255,255,0.04)", drawBorder: false },
-              ticks: {
-                color: "rgba(139,152,184,0.5)",
-                font: { family: "JetBrains Mono", size: 9 },
-                maxRotation: 0,
-                autoSkip: true,
-                maxTicksLimit: 8,
-              },
+              ticks: { color: "rgba(139,152,184,0.5)", font: { family: "JetBrains Mono", size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
               border: { display: false },
             },
             y: {
               grid: { color: "rgba(255,255,255,0.04)", drawBorder: false },
-              ticks: {
-                color: "rgba(139,152,184,0.5)",
-                font: { family: "JetBrains Mono", size: 9 },
-                maxTicksLimit: 4,
-                precision: 0,
-              },
+              ticks: { color: "rgba(139,152,184,0.5)", font: { family: "JetBrains Mono", size: 9 }, maxTicksLimit: 4, precision: 0 },
               border: { display: false },
             },
           },
@@ -594,30 +427,13 @@ function SparklineChart({ data }) {
       });
     };
     document.head.appendChild(script);
-    return () => {
-      chartRef.current?.destroy();
-    };
+    return () => { chartRef.current?.destroy(); };
   }, [data]);
 
   if (!data || data.length === 0)
     return (
-      <div
-        style={{
-          height: 120,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: "var(--text-dim)",
-          }}
-        >
-          no data
-        </span>
+      <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>no data</span>
       </div>
     );
 
@@ -628,7 +444,6 @@ function SparklineChart({ data }) {
   );
 }
 
-// ── Dashboard Page component ───────────────────────────────────────────────────
 function DashboardPage() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -648,9 +463,7 @@ function DashboardPage() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  useEffect(() => { fetchStats(); }, []);
 
   const kpi = stats?.kpi || {};
   const daily = stats?.daily || [];
@@ -685,7 +498,8 @@ function DashboardPage() {
 
       {stats && (
         <div className="dash-body">
-          {/* KPI Cards */}
+
+          {/* ── KPI row ── */}
           <div className="kpi-grid">
             <div className="kpi-card">
               <div className="kpi-label">total queries</div>
@@ -695,18 +509,8 @@ function DashboardPage() {
             <div className="kpi-card">
               <div className="kpi-label">avg latency</div>
               <div className="kpi-value">
-                {kpi.avg_latency_ms != null
-                  ? (kpi.avg_latency_ms / 1000).toFixed(1)
-                  : "—"}
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-dim)",
-                    marginLeft: 4,
-                  }}
-                >
-                  s
-                </span>
+                {kpi.avg_latency_ms != null ? (kpi.avg_latency_ms / 1000).toFixed(1) : "—"}
+                <span style={{ fontSize: 14, color: "var(--text-dim)", marginLeft: 4 }}>s</span>
               </div>
               <div className="kpi-sub">per query</div>
             </div>
@@ -721,154 +525,93 @@ function DashboardPage() {
             <div className="kpi-card">
               <div className="kpi-label">positive feedback</div>
               <div className="kpi-value">
-                {kpi.positive_feedback_pct != null
-                  ? kpi.positive_feedback_pct
-                  : "—"}
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-dim)",
-                    marginLeft: 2,
-                  }}
-                >
-                  %
-                </span>
+                {kpi.positive_feedback_pct != null ? kpi.positive_feedback_pct : "—"}
+                <span style={{ fontSize: 14, color: "var(--text-dim)", marginLeft: 2 }}>%</span>
               </div>
               <div className="kpi-sub">thumbs up / total</div>
             </div>
           </div>
 
-          {/* Layout: grafico a sinistra, sessioni + recent a destra */}
-          <div className="dash-main-grid">
-            {/* Colonna sinistra: solo grafico */}
+          {/* ── Grafico full width ── */}
+          <div className="dash-card">
+            <div className="dash-card-label">queries · last 30 days</div>
+            <div className="chart-wrap">
+              <SparklineChart data={daily} />
+            </div>
+          </div>
+
+          {/* ── Sessions (sinistra) + Recent queries (destra, si espande) ── */}
+          <div className="dash-bottom-grid">
+
             <div className="dash-card">
-              <div className="dash-card-label">queries · last 30 days</div>
-              <div className="chart-wrap">
-                <SparklineChart data={daily} />
-              </div>
-            </div>
-
-            {/* Colonna destra: sessioni + recent queries impilate */}
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-            >
-              <div className="dash-card">
-                <div className="dash-card-label">top sessions</div>
-                <div className="sessions-list">
-                  {sessions.length === 0 && (
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 11,
-                        color: "var(--text-dim)",
-                      }}
-                    >
-                      no sessions
-                    </span>
-                  )}
-                  {sessions.map((s, i) => (
-                    <div key={i} className="session-row">
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2,
-                        }}
-                      >
-                        <span className="session-id">{s.session_id}...</span>
-                        <span className="session-date">
-                          {s.last_activity?.slice(0, 10)}
-                        </span>
-                      </div>
-                      <span className="session-count">{s.query_count} q</span>
+              <div className="dash-card-label">top sessions</div>
+              <div className="sessions-list">
+                {sessions.length === 0 && (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)" }}>
+                    no sessions
+                  </span>
+                )}
+                {sessions.map((s, i) => (
+                  <div key={i} className="session-row">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span className="session-id">{s.session_id.slice(0, 8)}...</span>
+                      <span className="session-date">{s.last_activity?.slice(0, 10)}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="dash-card">
-                <div className="dash-card-label">recent queries</div>
-                <div className="recent-table-wrap">
-                  <table className="recent-table">
-                    <thead>
-                      <tr>
-                        <th>query</th>
-                        <th>answer</th>
-                        <th>latency</th>
-                        <th>cache</th>
-                        <th>feedback</th>
-                        <th>time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recent.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            style={{
-                              textAlign: "center",
-                              color: "var(--text-dim)",
-                              fontFamily: "var(--font-mono)",
-                              fontSize: 11,
-                            }}
-                          >
-                            no queries yet
-                          </td>
-                        </tr>
-                      )}
-                      {recent.map((r, i) => (
-                        <tr key={i}>
-                          <td className="td-query" title={r.query}>
-                            {r.query}
-                          </td>
-                          <td className="td-answer" title={r.answer}>
-                            {r.answer}
-                          </td>
-                          <td
-                            style={{
-                              fontFamily: "var(--font-mono)",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {r.latency_ms != null
-                              ? (r.latency_ms / 1000).toFixed(1) + "s"
-                              : "—"}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${r.cache_hit ? "badge-hit" : "badge-miss"}`}
-                            >
-                              {r.cache_hit ? "hit" : "miss"}
-                            </span>
-                          </td>
-                          <td>
-                            {r.feedback === true && (
-                              <span className="badge badge-up">↑ up</span>
-                            )}
-                            {r.feedback === false && (
-                              <span className="badge badge-down">↓ down</span>
-                            )}
-                            {r.feedback === null && (
-                              <span className="badge badge-none">—</span>
-                            )}
-                          </td>
-                          <td
-                            style={{
-                              fontFamily: "var(--font-mono)",
-                              fontSize: 10,
-                              whiteSpace: "nowrap",
-                              color: "var(--text-dim)",
-                            }}
-                          >
-                            {r.created_at?.slice(0, 16).replace("T", " ")}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    <span className="session-count">{s.query_count} q</span>
+                  </div>
+                ))}
               </div>
             </div>
+
+            <div className="dash-card">
+              <div className="dash-card-label">recent queries</div>
+              <div className="recent-table-wrap">
+                <table className="recent-table">
+                  <thead>
+                    <tr>
+                      <th>query</th>
+                      <th>answer</th>
+                      <th>latency</th>
+                      <th>cache</th>
+                      <th>feedback</th>
+                      <th>time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.length === 0 && (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: "center", color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                          no queries yet
+                        </td>
+                      </tr>
+                    )}
+                    {recent.map((r, i) => (
+                      <tr key={i}>
+                        <td className="td-query" title={r.query}>{r.query}</td>
+                        <td className="td-answer" title={r.answer}>{r.answer}</td>
+                        <td style={{ fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
+                          {r.latency_ms != null ? (r.latency_ms / 1000).toFixed(1) + "s" : "—"}
+                        </td>
+                        <td>
+                          <span className={`badge ${r.cache_hit ? "badge-hit" : "badge-miss"}`}>
+                            {r.cache_hit ? "hit" : "miss"}
+                          </span>
+                        </td>
+                        <td>
+                          {r.feedback === true  && <span className="badge badge-up">↑ up</span>}
+                          {r.feedback === false && <span className="badge badge-down">↓ down</span>}
+                          {r.feedback === null  && <span className="badge badge-none">—</span>}
+                        </td>
+                        <td style={{ fontFamily: "var(--font-mono)", fontSize: 10, whiteSpace: "nowrap", color: "var(--text-dim)" }}>
+                          {r.created_at?.slice(0, 16).replace("T", " ")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
@@ -884,18 +627,10 @@ export default function App() {
       <nav className="sidebar">
         <div className="sidebar-mark">Σ</div>
         <div className="sidebar-divider" />
-        <button
-          className={`nav-btn ${page === "chat" ? "active" : ""}`}
-          onClick={() => setPage("chat")}
-          title="Query"
-        >
+        <button className={`nav-btn ${page === "chat" ? "active" : ""}`} onClick={() => setPage("chat")} title="Query">
           <ChatIcon />
         </button>
-        <button
-          className={`nav-btn ${page === "dashboard" ? "active" : ""}`}
-          onClick={() => setPage("dashboard")}
-          title="Dashboard"
-        >
+        <button className={`nav-btn ${page === "dashboard" ? "active" : ""}`} onClick={() => setPage("dashboard")} title="Dashboard">
           <DashboardIcon />
         </button>
       </nav>
