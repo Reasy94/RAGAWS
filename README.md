@@ -6,7 +6,7 @@ Built as a portfolio project to demonstrate end-to-end ML engineering: from IaaS
 
 ## Architecture
 
-![Architecture Diagram](docs/architecture.png)
+![Architecture Diagram](docs/Architecture_diagram.png)
 
 
 # Serverless Document Intelligence RAG on AWS
