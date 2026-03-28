@@ -27,6 +27,10 @@ End-to-end AI engineering: from raw PDF ingestion to a React frontend, fully dep
 
 Upload a PDF report → the system automatically ingests, parses, and indexes it. Ask questions in natural language → get precise, sourced answers with referenced figures and tables.
 
+The core mechanism goes beyond standard text extraction. During ingestion, the pipeline geometrically detects figures and tables within each PDF page. Each detected element is cropped as a JPEG image and sent to a vision model (Claude Haiku), which analyzes the visual content — including all data points, labels, axes, and trends, producing dense semantic caption in natural language. This caption is then embedded using Cohere Embed Multilingual v3 and stored in PostgreSQL/pgvector as a regular text chunk, exactly like any other piece of text extracted from the document.
+
+This means that at retrieval time, a user asking about a specific chart or table is matched against its semantic caption through vector similarity — with no special handling required. When the relevant chunk is retrieved, the system also fetches the original cropped image from S3 and returns it inline alongside the answer, so the user sees both the textual explanation and the source visual in the same response.
+
 The system was developed and validated on **World Bank Global Economic Prospects (GEP)** and **World Bank Global Commodity Markets Outlook (CMO)** reports.
 
 ---
