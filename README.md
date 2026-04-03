@@ -8,12 +8,19 @@ End-to-end AI engineering: from raw PDF ingestion to a React frontend, fully dep
 
 ## Demo
 
-🎬 [Watch Demo Video](https://github.com/Reasy94/RAGAWS/releases/download/v1.0/rag_demo_chat.mp4)
+![Q&A](docs/Q&A1.png)
+![Source](docs/Source1.png)
 
+---
 
-![Chat Interface](docs/Screenshot1.png)
-![Chat Interface](docs/Screenshot2.png)
-![Chat Interface](docs/Screenshot3.png)
+![Q&A](docs/Q&A2.png)
+![Source](docs/Source2.png)
+
+---
+
+![Q&A](docs/Q&A3.png)
+![Source](docs/Source3_1.png)
+![Source](docs/Source3_2.png)
 
 ---
 
