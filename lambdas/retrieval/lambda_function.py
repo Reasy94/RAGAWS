@@ -14,7 +14,9 @@ from shared.config import (
     WINDOW_SIZE,
     VECTOR_BROAD_K,
     BM25_BROAD_K,
-    RRF_K
+    RRF_K,
+    VECTOR_WEIGHT,
+    BM25_WEIGHT,
 )
 from shared.db import get_conn, put_conn
 from shared.embeddings import get_embedding, find_closest_domain
@@ -193,13 +195,14 @@ def _bm25_search(
     return [chunks[i] for i in top_indices if scores[i] > 0]
 
 
-def _rrf(results_list: list[list[dict]]) -> list[dict]:
+def _rrf(results_list: list[list[dict]], weights: list[float] = None) -> list[dict]:
     scores    = {}
     chunk_map = {}
-    for results in results_list:
+    for i, results in enumerate(results_list):
+        w = weights[i] if weights else 1.0
         for rank, chunk in enumerate(results):
-            key            = (chunk["file_hash"], chunk["page_number"], chunk["chunk_id"])
-            scores[key]    = scores.get(key, 0) + 1.0 / (RRF_K + rank + 1)
+            key         = (chunk["file_hash"], chunk["page_number"], chunk["chunk_id"])
+            scores[key] = scores.get(key, 0) + w * (1.0 / (RRF_K + rank + 1))
             chunk_map[key] = chunk
     sorted_keys = sorted(scores, key=lambda x: scores[x], reverse=True)
     return [chunk_map[key] for key in sorted_keys]
@@ -213,7 +216,7 @@ def _retrieve_v3(
 ) -> list[dict]:
     vec_results  = _vector_search(query_embedding, chunks, top_k=VECTOR_BROAD_K)
     bm25_results = _bm25_search(query, chunks, bm25, top_k=BM25_BROAD_K)
-    fused        = _rrf([vec_results, bm25_results])[:RETRIEVAL_TOP_K]
+    fused        = _rrf([vec_results, bm25_results], weights=[VECTOR_WEIGHT, BM25_WEIGHT])[:RETRIEVAL_TOP_K]
     
     vec_score_map = {
         (c["file_hash"], c["page_number"], c["chunk_id"]): c.get("vector_score")
@@ -238,8 +241,8 @@ def _retrieve_v3(
 
 def _generate_response(query: str, chunks: list[dict], window_context: str = "") -> str:
     context = "\n\n---\n\n".join(
-        f"[{c['file_name']}, p.{c['page_number']}]\n{c['content']}"
-        for c in chunks
+        f"[CHUNK_ID:{i}][{c['file_name']}, p.{c['page_number']}]\n{c['content']}"
+        for i, c in enumerate(chunks)
     )
     conversation_block = (f"\n\n---\n\n{window_context}" if window_context else "")
 
@@ -247,8 +250,14 @@ def _generate_response(query: str, chunks: list[dict], window_context: str = "")
         "system": [{"text": (
             "You are an expert financial analyst assistant specializing in World Bank "
             "economic reports specifically the Global Economic Prospects (GEP) and Commodity Markets Outlook (CMO) series. "
-            "Answer questions based strictly on the provided context. If the context lacks sufficient information, say so explicitly. "
-            "When relevant data comes from a figure or table, mention the page number it appears on. "
+            "Answer questions based strictly on the provided context. "
+            "When the context contains ranges or aggregated values (e.g. 'around 3.0-3.5%'), use those values directly and state them clearly — do not say the information is missing. "
+            "When multiple sources provide conflicting data, prioritize the most recent report and the most specific value available. "
+            "When citing data from figures or tables, integrate the source reference naturally into the text rather than listing it explicitly. "
+            "Do not use phrases like 'This information can be found on page X' or 'This is noted on page X'. Embed references naturally within sentences."
+            "Synthesize information from multiple sources into a single coherent answer. Do not structure the response source by source."
+            "At the end of your response, on a new line, write exactly: USED_CHUNKS: [0, 2, ...] with the IDs of the chunks you used."
+            "Only include in USED_CHUNKS the IDs of chunks whose data you directly cited in your answer. Do not include chunks that were retrieved but not used."
             "Write in a clear and professional tone."
         )}],
         "messages": [{
@@ -499,6 +508,36 @@ def _build_window_context(history: dict) -> str:
 
     return "\n\n---\n\n".join(parts)
 
+def _rewrite_query(query: str, window_context: str) -> str:
+    body = json.dumps({
+        "messages": [{
+            "role": "user",
+            "content": [{"text": (
+                "Given the following conversation history, rewrite the last question "
+                "as a complete standalone question that includes all necessary context.\n\n"
+                f"Conversation:\n{window_context}\n\n"
+                f"Last question: {query}\n\n"
+                "Rewritten question (return only the question, nothing else):"
+            )}]
+        }],
+        "inferenceConfig": {"max_new_tokens": 100},
+    })
+    try:
+        response = bedrock.invoke_model(
+            modelId     = NOVA_PRO_MODEL_ID,
+            contentType = "application/json",
+            accept      = "application/json",
+            body        = body,
+        )
+        raw = json.loads(response["body"].read())
+        rewritten = raw["output"]["message"]["content"][0]["text"].strip()
+        logger.info(f"Rewritten query: {rewritten}")
+        return rewritten
+    except Exception as e:
+        logger.warning(f"Query rewriting failed, using original: {e}")
+        return query
+
+
 def _enrich_sources(sources: list[dict]) -> list[dict]:
     return [
         {**s, "image_url": _get_presigned_url(s.get("s3_path"))}
@@ -640,8 +679,16 @@ def lambda_handler(event, context):
             )
             return _api_response(200, cached)
 
-        # Step 3 — Domain detection
-        domain_id = find_closest_domain(np.array(query_embedding, dtype=np.float32))
+        # Step 3 — Load session history + build window context
+        history        = _load_session_history(session_id)
+        window_context = _build_window_context(history)
+
+        # Step 4 — Query rewriting
+        retrieval_query     = _rewrite_query(query, window_context) if window_context else query
+        retrieval_embedding = get_embedding(retrieval_query) if window_context else query_embedding
+
+        # Step 5 — Domain detection sulla query riscritta
+        domain_id = find_closest_domain(np.array(retrieval_embedding, dtype=np.float32))
         if domain_id is None:
             return _api_response(200, {
                 "response": "The question does not appear to be relevant to the available documentation.",
@@ -649,7 +696,7 @@ def lambda_handler(event, context):
                 "cached":   False,
             })
 
-        # Step 4 — Load domain chunks (warm cache on hot instances)
+        # Step 6 — Load domain chunks
         chunks, bm25 = _load_domain_chunks(domain_id)
         if not chunks:
             return _api_response(200, {
@@ -658,32 +705,40 @@ def lambda_handler(event, context):
                 "cached":   False,
             })
 
-        # Step 5 — V3: BM25 + Vector → RRF
+        # Step 7 — V3: BM25 + Vector → RRF
         top_chunks = _retrieve_v3(
-            query,
-            np.array(query_embedding, dtype=np.float32),
+            retrieval_query,
+            np.array(retrieval_embedding, dtype=np.float32),
             chunks,
             bm25,
         )
 
         if not top_chunks:
             return _api_response(200, {
-                "response": "I could not find any relevant documents to answer the question.",
-                "sources":  [],
-                "cached":   False,
-            })
+            "response": "I could not find any relevant documents to answer the question.",
+            "sources":  [],
+            "cached":   False,
+        })
 
-        # Step 6 — Load session history + build window context
-        history        = _load_session_history(session_id)
-        window_context = _build_window_context(history)
         response_text = _generate_response(query, top_chunks, window_context)
+
+        used_indices = list(range(len(top_chunks)))  # fallback
+        if "USED_CHUNKS:" in response_text:
+            parts = response_text.split("USED_CHUNKS:")
+            response_text = parts[0].strip()
+            try:
+                used_indices = json.loads(parts[1].strip())
+            except Exception:
+                pass
+
+        top_chunks_filtered = [top_chunks[i] for i in used_indices if i < len(top_chunks)]
 
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # Step 7 — Build sources
+        # Step 8 — Build sources
         seen = set()
         sources = []
-        for c in top_chunks:
+        for c in top_chunks_filtered:
             file_name = c["file_name"].split("/")[-1]
             key = (file_name, c["page_number"], c["chunk_type"])
             if key not in seen:
@@ -695,10 +750,10 @@ def lambda_handler(event, context):
                     "s3_path":     c.get("s3_path") if c["chunk_type"] in ("FIGURE", "TABLE") else None,
                 })
 
-        # Step 8 — con s3_path
+        # Step 9 — Store cache
         store_cache(query, query_embedding, response_text, sources)
 
-        # Step 9 - Store History
+        # Step 10 - Store History
         query_id = _store_query_history(
             session_id = session_id,
             query      = query,
