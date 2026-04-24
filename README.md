@@ -155,9 +155,9 @@ Evaluated with [RAGAS](https://ragas.io/) + MLflow on a curated set of 20+ quest
 
 | Variant | Faithfulness | Answer Relevancy | Context Precision | Context Recall | Avg Latency |
 |---|---|---|---|---|---|
-| V1 — Vector only | 0.932 | 0.802 | 0.620 | 0.900 | 0.01s |
+| V1 — Vector only | 0.932 | 0.802 | 0.620 | 0.900 | 1.0 s |
 | V2 — Vector + Rerank | 0.951 | 0.809 | 0.779 | 0.850 | 6.93s |
-| **V3 — Hybrid RRF** ✅ | 0.917 | **0.847** | 0.646 | 0.875 | **0.14s** |
+| **V3 — Hybrid RRF** ✅ | 0.917 | **0.847** | 0.646 | 0.875 | **1.2s** |
 | V4 — Hybrid RRF + Rerank | 0.952 | 0.720 | 0.743 | 0.900 | 5.41s |
 
 V3 (BM25 + Vector → RRF) selected as production variant: best answer relevancy across all configurations, with latency 38x lower than V4 (0.14s vs 5.41s). V4 was discarded despite marginally higher faithfulness: Cohere Rerank v3.5 is not available in ap-southeast-1 and requires cross-region inference routing through ap-northeast-1, adding significant latency overhead that makes it unsuitable for a production retrieval pipeline.
