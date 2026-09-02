@@ -160,7 +160,7 @@ Evaluated with [RAGAS](https://ragas.io/) + MLflow on a curated set of 20+ quest
 | **V3 — Hybrid RRF** ✅ | 0.917 | **0.847** | 0.646 | 0.875 | **1.2s** |
 | V4 — Hybrid RRF + Rerank | 0.952 | 0.720 | 0.743 | 0.900 | 5.41s |
 
-V3 (BM25 + Vector → RRF) selected as production variant: best answer relevancy across all configurations, with latency 38x lower than V4 (0.14s vs 5.41s). V4 was discarded despite marginally higher faithfulness: Cohere Rerank v3.5 is not available in ap-southeast-1 and requires cross-region inference routing through ap-northeast-1, adding significant latency overhead that makes it unsuitable for a production retrieval pipeline.
+V3 (BM25 + Vector → RRF) selected as production variant: best answer relevancy across all configurations, with latency lower than V4 (1.2s vs 5.41s). V4 was discarded despite marginally higher faithfulness: Cohere Rerank v3.5 is not available in ap-southeast-1 and requires cross-region inference routing through ap-northeast-1, adding significant latency overhead that makes it unsuitable for a production retrieval pipeline.
 
 - Retrieved chunk vector scores: consistently above 0.6 (Cohere Embed Multilingual v3 cosine similarity)
 - Domain routing similarity: 0.47–0.53 for in-domain queries
